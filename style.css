@@ -1,0 +1,125 @@
+/* ============================================================================
+   Antigravity Autonomous ECC Master Studio — Stylesheet (style.css)
+   Clean, distraction-free dark obsidian studio UI with glassmorphic depth,
+   autonomous multi-round execution trace cards, and live artifact preview.
+   ============================================================================ */
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.18) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+
+body {
+  background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.06) 0%, rgba(139, 92, 246, 0.03) 35%, #06070a 75%);
+  background-color: #06070a;
+  color: #f4f4f5;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass-bar {
+  background: rgba(10, 12, 18, 0.84);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.studio-sidebar {
+  background: linear-gradient(180deg, #090b10 0%, #06070a 100%);
+}
+
+.composer-shell {
+  background: linear-gradient(180deg, rgba(20, 23, 34, 0.96) 0%, rgba(13, 15, 23, 0.98) 100%);
+  box-shadow: 0 18px 48px -12px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.composer-shell:focus-within {
+  box-shadow: 0 20px 55px -12px rgba(2, 132, 199, 0.22), 0 0 0 1px rgba(56, 189, 248, 0.42);
+}
+
+.user-bubble {
+  background: linear-gradient(135deg, #1b2030 0%, #141824 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+}
+
+.trace-pill {
+  background: linear-gradient(90deg, rgba(16, 20, 30, 0.95) 0%, rgba(12, 15, 24, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.preset-card {
+  background: linear-gradient(180deg, rgba(18, 21, 31, 0.85) 0%, rgba(12, 14, 22, 0.9) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.preset-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.35);
+  background: linear-gradient(180deg, rgba(24, 28, 42, 0.95) 0%, rgba(15, 18, 28, 0.95) 100%);
+}
+
+pre.code-block {
+  background: #040508;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.85rem;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  color: #e2e8f0;
+  tab-size: 2;
+}
+
+.artifact-box {
+  background: linear-gradient(180deg, rgba(20, 24, 36, 0.96) 0%, rgba(12, 15, 24, 0.99) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  box-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.8);
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+.artifact-box:hover {
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+@keyframes shimmerPulse {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.thinking-pulse {
+  animation: shimmerPulse 1.5s ease-in-out infinite;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
