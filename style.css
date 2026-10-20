@@ -1,20 +1,20 @@
 /* ============================================================================
-   Antigravity Autonomous ECC Master Studio — ChatGPT Minimal Monochrome UI (style.css)
-   Authentic ChatGPT Monochrome Palette:
-   - Dark Mode:  #212121 main canvas | #171717 sidebar | #2f2f2f composer & user bubble | #ececec text
-   - Light Mode: #ffffff main canvas | #f9f9f9 sidebar | #f4f4f4 composer & user bubble | #0d0d0d text
+   Multimodal AI (MMA) — High-Contrast Monochrome Workspace Stylesheet (style.css)
+   - Light Mode: #ffffff background, #f8f8f8 sidebar, #f3f3f3 composer, #0d0d0d text
+   - Dark Mode:  #0d0d0d background, #141414 sidebar, #1f1f1f composer, #f5f5f5 text
+   - Zero decorative emoji, zero muddy grey gradients, crisp neutral borders.
    ============================================================================ */
 
 :root {
-  --bg-main: #212121;
-  --bg-sidebar: #171717;
-  --bg-surface: #2f2f2f;
-  --bg-elevated: #262626;
+  --bg-main: #0d0d0d;
+  --bg-sidebar: #141414;
+  --bg-surface: #1f1f1f;
+  --bg-elevated: #171717;
   --bg-hover: rgba(255, 255, 255, 0.06);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(255, 255, 255, 0.22);
-  --text-primary: #ececec;
-  --text-secondary: #b4b4b4;
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-focus: rgba(255, 255, 255, 0.32);
+  --text-primary: #f5f5f5;
+  --text-secondary: #d4d4d8;
   --text-muted: #8e8ea0;
   --accent-btn-bg: #ffffff;
   --accent-btn-fg: #0d0d0d;
@@ -22,15 +22,15 @@
 
 html.light {
   --bg-main: #ffffff;
-  --bg-sidebar: #f9f9f9;
-  --bg-surface: #f4f4f4;
+  --bg-sidebar: #f8f8f8;
+  --bg-surface: #f3f3f3;
   --bg-elevated: #ffffff;
   --bg-hover: rgba(0, 0, 0, 0.05);
-  --border-subtle: rgba(0, 0, 0, 0.09);
-  --border-focus: rgba(0, 0, 0, 0.28);
+  --border-subtle: rgba(0, 0, 0, 0.11);
+  --border-focus: rgba(0, 0, 0, 0.35);
   --text-primary: #0d0d0d;
-  --text-secondary: #424242;
-  --text-muted: #6e6e80;
+  --text-secondary: #27272a;
+  --text-muted: #52525b;
   --accent-btn-bg: #0d0d0d;
   --accent-btn-fg: #ffffff;
 }
@@ -38,7 +38,7 @@ html.light {
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: rgba(142, 142, 160, 0.22) transparent;
+  scrollbar-color: rgba(142, 142, 160, 0.25) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -51,7 +51,7 @@ html.light {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(142, 142, 160, 0.24);
+  background: rgba(142, 142, 160, 0.28);
   border-radius: 9999px;
 }
 
@@ -65,7 +65,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Header & Sidebar Surfaces */
 .glass-bar {
   background-color: var(--bg-main);
   border-bottom: 1px solid var(--border-subtle);
@@ -76,33 +75,30 @@ body {
   border-right: 1px solid var(--border-subtle);
 }
 
-/* ChatGPT Pill Composer */
 .composer-shell {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 1.5rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .composer-shell:focus-within {
   border-color: var(--border-focus);
-  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
 }
 
-/* ChatGPT User Message Bubble */
 .user-bubble {
   background-color: var(--bg-surface);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
-  border-radius: 1.35rem;
+  border-radius: 1.25rem;
 }
 
-/* Starter Prompt Cards */
 .preset-card {
-  background-color: transparent;
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 1rem;
+  border-radius: 0.875rem;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -111,25 +107,23 @@ body {
   border-color: var(--border-focus);
 }
 
-/* Code Blocks */
 pre.code-block {
-  background: #0d0d0d;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: #09090b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 0.75rem;
   padding: 1rem 1.15rem;
   overflow-x: auto;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.78rem;
   line-height: 1.65;
-  color: #ececec;
+  color: #f4f4f5;
   tab-size: 2;
 }
 
-/* Artifact Deliverable Card */
 .artifact-box {
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 1rem;
+  border-radius: 0.875rem;
   transition: border-color 0.15s ease;
 }
 
@@ -137,11 +131,10 @@ pre.code-block {
   border-color: var(--border-focus);
 }
 
-/* ChatGPT Minimal Thinking Accordion */
 .thinking-hud {
-  background-color: transparent;
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 0.9rem;
+  border-radius: 0.875rem;
 }
 
 .stage-step-pill {
@@ -149,9 +142,9 @@ pre.code-block {
 }
 
 .stage-step-active {
-  background-color: var(--bg-surface);
-  border-color: var(--border-focus);
-  color: var(--text-primary);
+  background-color: var(--accent-btn-bg);
+  border-color: var(--accent-btn-bg);
+  color: var(--accent-btn-fg);
 }
 
 .stage-step-done {
@@ -178,22 +171,31 @@ pre.code-block {
   scrollbar-width: none;
 }
 
-/* Light Mode Overrides for Tailwind Utility Classes */
+/* Light Mode Contrast Overrides */
 html.light .text-white,
 html.light .text-zinc-100 {
   color: #0d0d0d !important;
 }
+
 html.light .text-zinc-200,
 html.light .text-zinc-300 {
-  color: #333333 !important;
+  color: #27272a !important;
 }
+
 html.light .text-zinc-400,
 html.light .text-zinc-500 {
-  color: #666666 !important;
+  color: #52525b !important;
 }
+
+html.light .bg-white.text-black {
+  background-color: #0d0d0d !important;
+  color: #ffffff !important;
+}
+
 html.light #toolbox-drawer,
-html.light #engine-modal > div {
+html.light #engine-modal > div,
+html.light #attach-popover {
   background-color: #ffffff !important;
   color: #0d0d0d !important;
-  border-color: rgba(0, 0, 0, 0.12) !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
 }

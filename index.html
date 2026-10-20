@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Antigravity — Autonomous ECC Studio</title>
+  <meta name="description" content="Multimodal AI (MMA) — Skill-driven multimodal AI workbench for websites, browser applications, interactive tools, games, Python utilities, and reports." />
+  <title>Multimodal AI (MMA)</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,6 +23,53 @@
     };
   </script>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    :root {
+      --bg-main: #0d0d0d;
+      --bg-sidebar: #141414;
+      --bg-surface: #1f1f1f;
+      --bg-elevated: #171717;
+      --bg-hover: rgba(255, 255, 255, 0.06);
+      --border-subtle: rgba(255, 255, 255, 0.12);
+      --border-focus: rgba(255, 255, 255, 0.32);
+      --text-primary: #f5f5f5;
+      --text-secondary: #d4d4d8;
+      --text-muted: #8e8ea0;
+      --accent-btn-bg: #ffffff;
+      --accent-btn-fg: #0d0d0d;
+    }
+    html.light {
+      --bg-main: #ffffff;
+      --bg-sidebar: #f8f8f8;
+      --bg-surface: #f3f3f3;
+      --bg-elevated: #ffffff;
+      --bg-hover: rgba(0, 0, 0, 0.05);
+      --border-subtle: rgba(0, 0, 0, 0.11);
+      --border-focus: rgba(0, 0, 0, 0.35);
+      --text-primary: #0d0d0d;
+      --text-secondary: #27272a;
+      --text-muted: #52525b;
+      --accent-btn-bg: #0d0d0d;
+      --accent-btn-fg: #ffffff;
+    }
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      margin: 0;
+    }
+    .glass-bar { background-color: var(--bg-main); border-bottom: 1px solid var(--border-subtle); }
+    .studio-sidebar { background-color: var(--bg-sidebar); border-right: 1px solid var(--border-subtle); }
+    .composer-shell { background-color: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 1.5rem; }
+    .composer-shell:focus-within { border-color: var(--border-focus); }
+    .user-bubble { background-color: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: 1.25rem; }
+    .preset-card { background-color: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 0.875rem; }
+    .preset-card:hover { background-color: var(--bg-hover); border-color: var(--border-focus); }
+    .artifact-box { background-color: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 0.875rem; }
+    .thinking-hud { background-color: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 0.875rem; }
+    pre.code-block { background: #09090b; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 0.75rem; padding: 1rem; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; line-height: 1.65; color: #f4f4f5; }
+  </style>
 </head>
 <body class="h-screen w-screen flex overflow-hidden select-none sm:select-auto">
 
@@ -29,18 +77,21 @@
   <div id="sidebar-backdrop" class="fixed inset-0 bg-black/60 z-30 hidden lg:hidden"></div>
 
   <!-- =====================================================================
-       LEFT SIDEBAR: CHATGPT-STYLE MINIMAL SIDEBAR (#171717)
+       LEFT SIDEBAR: MONOCHROME NAVIGATION & CONVERSATION LIST
        ===================================================================== -->
-  <aside id="app-sidebar" class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] studio-sidebar flex flex-col transition-transform duration-200 -translate-x-full lg:translate-x-0">
+  <aside id="app-sidebar" aria-label="Conversation Sidebar" class="fixed lg:static inset-y-0 left-0 z-40 w-[264px] studio-sidebar flex flex-col transition-transform duration-200 -translate-x-full lg:translate-x-0">
     <!-- Top Brand & New Chat Action -->
-    <div class="h-14 px-3 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2.5 px-1.5">
-        <div class="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center font-semibold text-xs">
-          ✦
+    <div class="h-14 px-3.5 flex items-center justify-between gap-2 border-b border-white/[0.08]">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-white text-black flex items-center justify-center font-bold text-[11px] tracking-tight">
+          MMA
         </div>
-        <span class="text-sm font-semibold text-white tracking-tight">Antigravity</span>
+        <div class="leading-tight">
+          <div class="text-sm font-semibold text-white tracking-tight">Multimodal AI</div>
+          <div class="text-[10px] font-mono text-zinc-400">Skill-Driven Workbench</div>
+        </div>
       </div>
-      <button id="btn-new-chat" type="button" title="Start a new chat" class="px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-zinc-200 text-xs font-medium transition flex items-center gap-1.5 border border-white/10">
+      <button id="btn-new-chat" type="button" title="Start a new isolated chat" class="px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-zinc-100 text-xs font-medium transition flex items-center gap-1.5 border border-white/15">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
@@ -49,30 +100,30 @@
     </div>
 
     <!-- Chat History List -->
-    <div class="px-3.5 pt-2 pb-1 flex items-center justify-between text-[11px] font-medium text-zinc-500">
-      <span>Chats</span>
-      <span id="chat-count-label" class="text-[10px] font-mono text-zinc-500">1</span>
+    <div class="px-3.5 pt-3 pb-1 flex items-center justify-between text-[11px] font-medium text-zinc-400 uppercase tracking-wider">
+      <span>Conversations</span>
+      <span id="chat-count-label" class="text-[10px] font-mono text-zinc-400">1</span>
     </div>
-    <div id="chat-history-list" class="flex-1 overflow-y-auto px-2 space-y-0.5 py-1">
+    <div id="chat-history-list" class="flex-1 overflow-y-auto px-2 space-y-1 py-1">
       <!-- Populated dynamically by main.js -->
     </div>
 
-    <!-- Bottom Sidebar Footer: Studio Drawer & System Settings -->
+    <!-- Bottom Sidebar Footer: Artifact Studio & System Diagnostics -->
     <div class="p-2.5 border-t border-white/[0.08] space-y-1">
       <button id="btn-sidebar-toolbox" type="button" class="w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-zinc-200 transition">
         <span class="flex items-center gap-2">
           <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
-          <span>Workspace Files &amp; ZIP</span>
+          <span>Artifact Studio &amp; ZIP</span>
         </span>
-        <span id="sidebar-files-badge" class="px-1.5 py-0.5 rounded bg-white/[0.08] text-zinc-300 font-mono text-[10px]">0 files</span>
+        <span id="sidebar-files-badge" class="px-1.5 py-0.5 rounded bg-white/[0.08] text-zinc-200 font-mono text-[10px]">0 files</span>
       </button>
 
       <button id="btn-open-engine" type="button" class="w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-[11px] text-zinc-400 hover:text-zinc-200 transition">
         <span class="flex items-center gap-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-          <span>System &amp; 3-Key Status</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+          <span>3-API &amp; Skill Registry</span>
         </span>
         <span id="sidebar-rpm-pill" class="font-mono text-[10px] text-zinc-400">0/15 RPM</span>
       </button>
@@ -80,84 +131,83 @@
   </aside>
 
   <!-- =====================================================================
-       CENTER MAIN CHATGPT-STYLE WORKSPACE (#212121)
+       CENTER MAIN WORKSPACE
        ===================================================================== -->
   <div class="flex-1 flex flex-col h-full min-w-0 relative">
 
     <!-- Minimal Top Header -->
     <header class="h-14 px-3 sm:px-5 glass-bar flex items-center justify-between gap-2 shrink-0 z-20">
       <div class="flex items-center gap-2 min-w-0">
-        <button id="btn-toggle-sidebar" type="button" aria-label="Toggle Sidebar" class="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition lg:hidden">
+        <button id="btn-toggle-sidebar" type="button" aria-label="Toggle Sidebar" class="p-2 rounded-lg text-zinc-300 hover:text-white hover:bg-white/[0.06] transition lg:hidden">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h16M4 18h12" />
           </svg>
         </button>
 
-        <!-- ChatGPT Model / Title Selector Look -->
         <div class="flex items-center gap-2 min-w-0">
-          <h1 id="current-chat-title" class="text-sm font-semibold text-zinc-100 truncate">Antigravity 3.5</h1>
-          <span id="header-lifecycle-badge" class="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono bg-white/[0.06] text-zinc-300 border border-white/[0.08]">
+          <h1 id="current-chat-title" class="text-sm font-semibold text-zinc-100 truncate">Multimodal AI (MMA)</h1>
+          <span id="header-lifecycle-badge" class="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono bg-white/[0.06] text-zinc-200 border border-white/15">
             READY
           </span>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 sm:gap-2">
-        <!-- New Chat Button -->
-        <button id="btn-header-new-chat" type="button" title="Start a fresh isolated chat" class="px-2.5 py-1.5 rounded-lg bg-white text-black hover:bg-zinc-200 font-medium text-xs transition flex items-center gap-1 shrink-0">
-          <span>+ New</span>
+        <!-- Visible New Chat Control (Mobile & Desktop) -->
+        <button id="btn-header-new-chat" type="button" title="Start a fresh isolated chat" class="px-2.5 py-1.5 rounded-lg bg-white text-black hover:bg-zinc-200 font-semibold text-xs transition flex items-center gap-1 shrink-0">
+          <span>+ New Chat</span>
         </button>
 
-        <!-- Session Switcher -->
-        <select id="header-chat-switcher" aria-label="Switch Chat Session" class="max-w-[130px] sm:max-w-[165px] rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] px-2 py-1 text-xs text-zinc-200 focus:outline-none cursor-pointer truncate">
-          <option value="">Session #1</option>
+        <!-- Chat Switcher -->
+        <select id="header-chat-switcher" aria-label="Switch Chat Thread" class="max-w-[125px] sm:max-w-[165px] rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/15 px-2 py-1 text-xs text-zinc-200 focus:outline-none cursor-pointer truncate">
+          <option value="">Chat #1</option>
         </select>
 
-        <!-- 10-Message Context Indicator -->
-        <div id="header-context-pill" title="Carries exact last 10 messages + older summary + active files" class="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.07] text-[10px] font-mono text-zinc-400">
-          <span id="header-context-count">Context: 0/10 msgs · 0 files</span>
+        <!-- 10-Turn (Up to 20 Messages) Context Indicator -->
+        <div id="header-context-pill" title="Carries last 10 completed conversational turns (up to 20 messages) + current request + older summary" class="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-[10px] font-mono text-zinc-300">
+          <span id="header-context-count">Context: 0/10 turns · 0 files</span>
         </div>
 
-        <!-- Hidden/Subtle Agent Status Hook -->
-        <div id="header-agent-pill" class="hidden">
-          <span id="header-agent-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-          <span id="header-agent-text">Ready</span>
+        <!-- Operational Role Indicator -->
+        <div id="header-agent-pill" class="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-[10px] font-mono text-zinc-300">
+          <span id="header-agent-dot" class="w-1.5 h-1.5 rounded-full bg-white"></span>
+          <span id="header-agent-text">Idle</span>
         </div>
 
         <!-- Pause / Resume Checkpoint Controls -->
-        <button id="btn-cancel-task" type="button" class="hidden px-2.5 py-1 rounded-lg bg-white/10 text-zinc-200 border border-white/15 text-xs font-mono">
+        <button id="btn-cancel-task" type="button" class="hidden px-2.5 py-1 rounded-lg bg-white/10 text-zinc-200 border border-white/20 text-xs font-mono">
           Pause
         </button>
-        <button id="btn-resume-task" type="button" class="hidden px-2.5 py-1 rounded-lg bg-white text-black text-xs font-mono font-medium">
+        <button id="btn-resume-task" type="button" class="hidden px-2.5 py-1 rounded-lg bg-white text-black text-xs font-mono font-semibold">
           Resume
         </button>
 
-        <!-- Light / Dark Theme Toggle -->
-        <button id="btn-theme-toggle" type="button" title="Toggle Light / Dark Theme" class="p-2 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-white/[0.06] transition">
-          ◐
+        <!-- Light / Dark Monochrome Theme Toggle -->
+        <button id="btn-theme-toggle" type="button" title="Toggle Light / Dark Monochrome Mode" class="px-2 py-1.5 rounded-lg text-xs font-mono text-zinc-300 hover:text-white hover:bg-white/[0.06] border border-white/10 transition">
+          Theme
         </button>
 
-        <!-- Reset Session -->
+        <!-- Reset Current Chat -->
         <button id="btn-clear-chat" type="button" title="Reset current chat" class="px-2 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-white/[0.06] transition hidden sm:inline-block">
           Reset
         </button>
 
         <!-- Open Artifact Studio Drawer -->
-        <button id="btn-open-toolbox" type="button" class="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-medium text-zinc-200 flex items-center gap-1.5 transition">
-          <span>Files</span>
+        <button id="btn-open-toolbox" type="button" class="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-medium text-zinc-100 flex items-center gap-1.5 transition">
+          <span>Artifacts</span>
           <span id="header-files-count" class="px-1.5 py-0.2 rounded-full bg-white text-black font-mono font-semibold text-[10px]">0</span>
         </button>
       </div>
     </header>
 
-    <!-- Active Session Objective Bar (Shown only when an objective is locked) -->
-    <div id="active-goal-banner" class="hidden px-4 py-1.5 bg-[#171717] border-b border-white/[0.08] items-center justify-between gap-3 z-10">
+    <!-- Active Conversation Goal Bar -->
+    <div id="active-goal-banner" class="hidden px-4 py-1.5 bg-[#141414] border-b border-white/10 items-center justify-between gap-3 z-10">
       <div class="flex items-center gap-2 min-w-0">
-        <span class="px-2 py-0.5 rounded bg-white/[0.08] text-[10px] font-mono text-zinc-300 shrink-0">OBJECTIVE</span>
-        <span id="active-goal-text" class="text-xs text-zinc-200 truncate">Deliver verified multi-file application</span>
+        <span class="px-2 py-0.5 rounded bg-white/10 text-[10px] font-mono text-zinc-200 shrink-0">ACTIVE GOAL</span>
+        <span id="active-goal-text" class="text-xs text-zinc-200 truncate">Deliver verified application</span>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <span id="active-goal-progress" class="text-[10px] font-mono text-zinc-400">5-Stage Verification</span>
+        <span id="active-goal-progress" class="text-[10px] font-mono text-zinc-400">Semantic + 5-Stage Gate</span>
         <button id="btn-clear-goal" type="button" class="text-[11px] text-zinc-400 hover:text-white px-2 py-0.5 rounded hover:bg-white/[0.06]">Clear</button>
       </div>
     </div>
@@ -169,50 +219,50 @@
       </div>
     </main>
 
-    <!-- ChatGPT-Style Bottom Pill Composer (#2f2f2f) -->
+    <!-- Monochrome Bottom Pill Composer -->
     <footer class="px-3 sm:px-6 pb-4 pt-1 shrink-0">
       <div class="max-w-3xl mx-auto">
 
-        <!-- Attachment Preview Strip -->
+        <!-- Per-Chat Attachment Preview Strip -->
         <div id="attachments-preview" class="hidden flex-wrap gap-2 mb-2 px-1"></div>
 
-        <!-- Hidden File Upload Input (20 MB per file limit enforced in main.js) -->
-        <input id="file-upload-input" type="file" multiple accept=".txt,.md,.js,.ts,.jsx,.tsx,.py,.html,.css,.json,.csv,.log,.sql,.yaml,.yml,.xml,.sh,.pdf,.doc,.docx,.zip,image/*" class="hidden" />
+        <!-- Hidden File Upload Input (20 MiB per file limit enforced) -->
+        <input id="file-upload-input" type="file" multiple accept=".txt,.md,.js,.ts,.jsx,.tsx,.py,.html,.css,.json,.csv,.log,.sql,.yaml,.yml,.xml,.sh,.pdf,.doc,.docx,.zip,image/*,audio/*,video/*" class="hidden" />
 
-        <!-- Rounded ChatGPT Composer Box -->
+        <!-- Composer Form -->
         <form id="chat-form" class="composer-shell p-2.5 sm:px-3.5 sm:py-2.5">
           <div class="flex items-end gap-2">
 
-            <!-- Plus / Attach Button -->
+            <!-- Attach Button -->
             <div class="relative">
-              <button id="btn-attach-menu" type="button" title="Attach files, images, or ZIP archives (up to 20 MB)" class="w-8 h-8 rounded-full hover:bg-white/[0.08] text-zinc-300 hover:text-white flex items-center justify-center transition shrink-0">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4" />
+              <button id="btn-attach-menu" type="button" title="Attach files, images, or ZIP archives (up to 20 MiB)" aria-label="Attach files" class="w-8 h-8 rounded-full hover:bg-white/10 text-zinc-200 hover:text-white flex items-center justify-center transition shrink-0 border border-white/15">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
               </button>
 
-              <!-- Clean Attachment Popover -->
-              <div id="attach-popover" class="hidden absolute bottom-11 left-0 w-64 rounded-2xl bg-[#171717] border border-white/10 shadow-2xl p-1.5 z-30 space-y-0.5">
-                <button id="btn-trigger-file" type="button" class="w-full px-3 py-2 rounded-xl hover:bg-white/[0.07] text-left text-xs text-zinc-200 flex items-center gap-2.5 transition">
-                  <span>📎</span>
+              <!-- Attachment Popover -->
+              <div id="attach-popover" class="hidden absolute bottom-11 left-0 w-64 rounded-2xl bg-[#141414] border border-white/15 shadow-2xl p-1.5 z-30 space-y-0.5">
+                <button id="btn-trigger-file" type="button" class="w-full px-3 py-2 rounded-xl hover:bg-white/[0.08] text-left text-xs text-zinc-200 flex items-center justify-between transition">
                   <div>
-                    <div class="font-medium text-white">Upload Files, Photos or ZIP</div>
-                    <div class="text-[10px] text-zinc-400">Max 20 MB/file · Code, PDF, images, .zip</div>
+                    <div class="font-medium text-white">Upload Files, Images or ZIP</div>
+                    <div class="text-[10px] text-zinc-400">Max 20 MiB/file · Code, PDF, CSV, .zip</div>
                   </div>
+                  <span class="font-mono text-[10px] text-zinc-400">FILE</span>
                 </button>
-                <button id="btn-sample-code-file" type="button" class="w-full px-3 py-2 rounded-xl hover:bg-white/[0.07] text-left text-xs text-zinc-200 flex items-center gap-2.5 transition">
-                  <span>📄</span>
+                <button id="btn-sample-code-file" type="button" class="w-full px-3 py-2 rounded-xl hover:bg-white/[0.08] text-left text-xs text-zinc-200 flex items-center justify-between transition">
                   <div>
-                    <div class="font-medium text-white">Attach Sample TypeScript File</div>
-                    <div class="text-[10px] text-zinc-400">Test code review &amp; refactoring</div>
+                    <div class="font-medium text-white">Attach Sample TypeScript Module</div>
+                    <div class="text-[10px] text-zinc-400">Test code audit &amp; refactoring</div>
                   </div>
+                  <span class="font-mono text-[10px] text-zinc-400">.TS</span>
                 </button>
-                <button id="btn-sample-image" type="button" class="w-full px-3 py-2 rounded-xl hover:bg-white/[0.07] text-left text-xs text-zinc-200 flex items-center gap-2.5 transition">
-                  <span>🖼️</span>
+                <button id="btn-sample-image" type="button" class="w-full px-3 py-2 rounded-xl hover:bg-white/[0.08] text-left text-xs text-zinc-200 flex items-center justify-between transition">
                   <div>
                     <div class="font-medium text-white">Attach Sample UI Wireframe</div>
-                    <div class="text-[10px] text-zinc-400">Test vision-to-HTML app synthesis</div>
+                    <div class="text-[10px] text-zinc-400">Test multimodal vision-to-HTML build</div>
                   </div>
+                  <span class="font-mono text-[10px] text-zinc-400">IMG</span>
                 </button>
               </div>
             </div>
@@ -221,11 +271,12 @@
             <textarea
               id="chat-input"
               rows="1"
-              placeholder="Message Antigravity…"
+              placeholder="Message Multimodal AI (MMA)…"
+              aria-label="Message Multimodal AI"
               class="flex-1 bg-transparent text-sm text-white placeholder-zinc-400 px-1 py-1 focus:outline-none resize-none max-h-40 leading-relaxed"
             ></textarea>
 
-            <!-- ChatGPT Circular Up-Arrow Send Button -->
+            <!-- Send Button -->
             <button
               type="submit"
               id="btn-send-task"
@@ -240,10 +291,10 @@
           </div>
         </form>
 
-        <!-- Subtle ChatGPT-Style Footer Caption -->
-        <div class="mt-2 flex items-center justify-between px-2 text-[11px] text-zinc-500">
-          <span>Autonomous ECC v2.2.3 · Planner → Builder → Reviewer</span>
-          <span id="live-router-status" class="font-mono text-[10px] text-zinc-500 truncate">3 Keys Active · 15 RPM Guard</span>
+        <!-- Operational Footer Bar -->
+        <div class="mt-2 flex items-center justify-between px-2 text-[11px] text-zinc-400">
+          <span>Multimodal AI (MMA) · ECC v2.2.3 · Master Planner → Builder → Reviewer</span>
+          <span id="live-router-status" class="font-mono text-[10px] text-zinc-400 truncate">3 API Roles Ready · 15 RPM Ceiling</span>
         </div>
 
         <!-- Hidden Legacy Compatibility Hooks -->
@@ -257,93 +308,93 @@
   </div>
 
   <!-- =====================================================================
-       RIGHT SLIDE-OVER DRAWER: ARTIFACT PREVIEW & ZIP STUDIO
+       RIGHT SLIDE-OVER DRAWER: ARTIFACT STUDIO & ISOLATED SANDBOX PREVIEW
        ===================================================================== -->
-  <aside id="toolbox-drawer" class="fixed inset-y-0 right-0 z-40 w-full sm:w-[540px] lg:w-[640px] bg-[#171717] border-l border-white/[0.08] flex flex-col transition-transform duration-200 translate-x-full shadow-2xl">
-    <div class="h-14 px-4 border-b border-white/[0.08] flex items-center justify-between gap-2">
+  <aside id="toolbox-drawer" aria-label="Artifact Studio" class="fixed inset-y-0 right-0 z-40 w-full sm:w-[560px] lg:w-[660px] bg-[#141414] border-l border-white/15 flex flex-col transition-transform duration-200 translate-x-full shadow-2xl">
+    <div class="h-14 px-4 border-b border-white/10 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2.5 min-w-0">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-white truncate">Workspace Artifacts &amp; Preview</h2>
-            <span id="toolbox-verify-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.08] text-zinc-300">✓ Verified</span>
+            <h2 class="text-sm font-semibold text-white truncate">MMA Artifact Studio</h2>
+            <span id="toolbox-verify-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-200 border border-white/15">VERIFIED</span>
           </div>
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
-        <button id="btn-download-all-files" type="button" class="px-2.5 py-1 rounded-lg bg-white text-black hover:bg-zinc-200 text-xs font-medium transition">
-          ⬇ Download .ZIP
+        <button id="btn-download-all-files" type="button" class="px-2.5 py-1 rounded-lg bg-white text-black hover:bg-zinc-200 text-xs font-semibold transition">
+          Download .ZIP
         </button>
-        <button id="btn-close-toolbox" type="button" class="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition">
-          ✕
+        <button id="btn-close-toolbox" type="button" aria-label="Close Artifact Studio" class="px-2 py-1 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-white/10 transition">
+          Close
         </button>
       </div>
     </div>
 
-    <!-- File Tabs -->
-    <div id="toolbox-file-tabs" class="px-4 py-2 border-b border-white/[0.08] flex items-center gap-1.5 overflow-x-auto"></div>
+    <!-- Generated File List Tabs -->
+    <div id="toolbox-file-tabs" class="px-4 py-2 border-b border-white/10 flex items-center gap-1.5 overflow-x-auto"></div>
 
     <!-- Code / Live Preview Switcher -->
-    <div class="px-4 py-2 border-b border-white/[0.08] flex items-center justify-between">
-      <div class="flex items-center gap-1 bg-white/[0.05] p-0.5 rounded-lg border border-white/[0.08]">
+    <div class="px-4 py-2 border-b border-white/10 flex items-center justify-between">
+      <div class="flex items-center gap-1 bg-white/[0.05] p-0.5 rounded-lg border border-white/10">
         <button id="btn-toolbox-code-view" type="button" class="px-3 py-1 rounded-md text-xs font-medium bg-white/10 text-white">
-          Code
+          Source Code
         </button>
         <button id="btn-toolbox-preview-view" type="button" class="px-3 py-1 rounded-md text-xs font-medium text-zinc-400 hover:text-white">
           Live Preview
         </button>
       </div>
       <div class="flex items-center gap-2">
-        <button id="btn-copy-active-file" type="button" class="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-xs text-zinc-200 transition">
+        <button id="btn-copy-active-file" type="button" class="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/15 text-xs text-zinc-200 border border-white/10 transition">
           Copy
         </button>
-        <button id="btn-download-active-file" type="button" class="px-3 py-1 rounded-lg bg-white hover:bg-zinc-200 text-black font-medium text-xs transition">
-          ⬇ Download
+        <button id="btn-download-active-file" type="button" class="px-3 py-1 rounded-lg bg-white hover:bg-zinc-200 text-black font-semibold text-xs transition">
+          Download File
         </button>
       </div>
     </div>
 
     <!-- Active File Content / Sandboxed Preview -->
     <div class="flex-1 overflow-y-auto p-4 relative" id="toolbox-content-area">
-      <div id="toolbox-empty-state" class="h-full flex flex-col items-center justify-center text-center text-zinc-500 px-6">
-        <p class="text-sm font-medium text-zinc-300 mb-1">No generated files in this chat yet</p>
-        <p class="text-xs text-zinc-500">Ask Antigravity to build a web app, Python script, or multi-file project to inspect and preview it here.</p>
+      <div id="toolbox-empty-state" class="h-full flex flex-col items-center justify-center text-center text-zinc-400 px-6">
+        <p class="text-sm font-medium text-zinc-200 mb-1">No generated files in this chat yet</p>
+        <p class="text-xs text-zinc-400">Ask MMA to build a website, clothing store, browser application, game, Python utility, or report to preview and download it here.</p>
       </div>
       <pre id="toolbox-code-display" class="code-block hidden min-h-full"></pre>
-      <iframe id="toolbox-live-iframe" title="Live Artifact Preview" sandbox="allow-scripts" class="hidden w-full h-full rounded-xl border border-white/10 bg-white"></iframe>
+      <iframe id="toolbox-live-iframe" title="Isolated Live Artifact Preview" sandbox="allow-scripts" class="hidden w-full h-full rounded-xl border border-white/15 bg-white"></iframe>
     </div>
   </aside>
 
   <!-- =====================================================================
-       MODAL: SYSTEM DIAGNOSTICS, 3-KEY ROTATION & ECC REGISTRY
+       MODAL: MMA 3-API ORCHESTRATION, SKILL REGISTRY & SECURITY DIAGNOSTICS
        ===================================================================== -->
   <div id="engine-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-6">
-    <div class="w-full max-w-4xl max-h-[90vh] rounded-2xl bg-[#171717] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
-      <div class="px-5 py-4 border-b border-white/[0.08] flex items-center justify-between gap-2">
+    <div class="w-full max-w-4xl max-h-[90vh] rounded-2xl bg-[#141414] border border-white/15 shadow-2xl flex flex-col overflow-hidden">
+      <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-2">
         <div>
-          <h2 class="text-sm font-semibold text-white">System Diagnostics · 3-Key Rotation &amp; ECC v2.2.3</h2>
-          <p class="text-[11px] text-zinc-400">Planner, Builder &amp; Reviewer rotation · Shared Project Quota: 15/20 RPM ceiling</p>
+          <h2 class="text-sm font-semibold text-white">Multimodal AI (MMA) · 3-API Architecture &amp; Skill Registry</h2>
+          <p class="text-[11px] text-zinc-400">Role 1: Master Planner · Role 2: Builder · Role 3: Reviewer · Shared Project Quota: 15/20 RPM Ceiling</p>
         </div>
         <div class="flex items-center gap-2">
-          <button id="btn-pulse-check" type="button" class="px-3 py-1.5 rounded-lg text-xs font-mono bg-white text-black hover:bg-zinc-200 font-medium transition">
-            Run Self-Test
+          <button id="btn-pulse-check" type="button" class="px-3 py-1.5 rounded-lg text-xs font-mono bg-white text-black hover:bg-zinc-200 font-semibold transition">
+            Run Acceptance Self-Test
           </button>
-          <button id="btn-close-engine" type="button" class="p-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-zinc-300">
-            ✕
+          <button id="btn-close-engine" type="button" class="px-2.5 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/15 text-xs text-zinc-200">
+            Close
           </button>
         </div>
       </div>
 
       <!-- Modal Sub-Navigation -->
-      <div class="px-5 py-2 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-2">
+      <div class="px-5 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-1">
-          <button id="tab-workspace" data-view="workspace" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-white">3-Key Rotation</button>
-          <button id="tab-ecc" data-view="ecc" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-white">ECC Skills <span id="badge-ecc-count" class="ml-1 font-mono text-[10px] text-zinc-300">28A/119S</span></button>
-          <button id="tab-shield" data-view="shield" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-white">Security <span id="badge-shield-score" class="ml-1 font-mono text-[10px] text-zinc-300">100/100</span></button>
+          <button id="tab-workspace" data-view="workspace" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-white">3-API Roles</button>
+          <button id="tab-ecc" data-view="ecc" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-white">MMA Skill Registry <span id="badge-ecc-count" class="ml-1 font-mono text-[10px] text-zinc-300">ECC + 9 Packs</span></button>
+          <button id="tab-shield" data-view="shield" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-white">Security Audit <span id="badge-shield-score" class="ml-1 font-mono text-[10px] text-zinc-300">100/100</span></button>
           <button id="tab-instincts" data-view="instincts" type="button" class="engine-subtab px-3 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-white">Telemetry</button>
         </div>
         <div class="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400">
-          <span>Profile: <strong id="active-profile-label" class="text-zinc-200">FULL ECC</strong></span>
-          <span>•</span>
+          <span>Foundation: <strong id="active-profile-label" class="text-zinc-200">ECC v2.2.3 + Specialist Skills</strong></span>
+          <span>·</span>
           <span>Context: <strong id="active-context-label" class="text-zinc-200">dev.md</strong></span>
         </div>
       </div>
@@ -351,53 +402,53 @@
       <!-- Modal Body -->
       <div class="flex-1 overflow-y-auto p-5 space-y-5">
 
-        <!-- 3 Rotating Key Slot Cards -->
+        <!-- 3 Logical Gemini API Role Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div id="node-card-master" class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08]">
+          <div id="node-card-master" class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10">
             <div class="flex items-center justify-between mb-1.5">
               <div class="flex items-center gap-1.5">
-                <span id="node-01" class="hidden"></span><span id="item-input" class="hidden"></span><span id="items-list" class="hidden"></span><span id="stat-val" class="hidden"></span><span id="dot-master" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span class="font-mono text-xs font-semibold text-white">Key #1 · Planner</span>
+                <span id="node-01" class="hidden"></span><span id="item-input" class="hidden"></span><span id="items-list" class="hidden"></span><span id="stat-val" class="hidden"></span><span id="dot-master" class="w-2 h-2 rounded-full bg-white"></span>
+                <span class="font-mono text-xs font-semibold text-white">API Role 1 · Master Planner</span>
               </div>
               <span id="status-master" class="font-mono text-[10px] text-zinc-300">HEALTHY</span>
             </div>
-            <div class="text-[11px] text-zinc-400 mb-2">Slot: <code id="fp-master" class="text-zinc-300 font-mono">ROTATION_KEY_01 · ACTIVE</code></div>
+            <div class="text-[11px] text-zinc-400 mb-2">Route: <code id="fp-master" class="text-zinc-300 font-mono">ENV:GEMINI_API_KEY_PLANNER</code></div>
             <div class="space-y-1.5 text-[10px] font-mono">
-              <div class="flex justify-between"><span>Project RPM</span><span id="rpm-val-master">0 / 15</span></div>
+              <div class="flex justify-between"><span>Shared Project RPM</span><span id="rpm-val-master">0 / 15</span></div>
               <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div id="rpm-bar-master" class="h-full bg-white" style="width:0%"></div></div>
               <div class="flex justify-between"><span>Daily RPD</span><span id="rpd-val-master">0 / 1000</span></div>
               <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div id="rpd-bar-master" class="h-full bg-zinc-400" style="width:0%"></div></div>
             </div>
           </div>
 
-          <div id="node-card-alpha" class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08]">
+          <div id="node-card-alpha" class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10">
             <div class="flex items-center justify-between mb-1.5">
               <div class="flex items-center gap-1.5">
-                <span id="dot-alpha" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span class="font-mono text-xs font-semibold text-white">Key #2 · Builder</span>
+                <span id="dot-alpha" class="w-2 h-2 rounded-full bg-white"></span>
+                <span class="font-mono text-xs font-semibold text-white">API Role 2 · Builder</span>
               </div>
               <span id="status-alpha" class="font-mono text-[10px] text-zinc-300">HEALTHY</span>
             </div>
-            <div class="text-[11px] text-zinc-400 mb-2">Slot: <code id="fp-alpha" class="text-zinc-300 font-mono">ROTATION_KEY_02 · ACTIVE</code></div>
+            <div class="text-[11px] text-zinc-400 mb-2">Route: <code id="fp-alpha" class="text-zinc-300 font-mono">ENV:GEMINI_API_KEY_BUILDER</code></div>
             <div class="space-y-1.5 text-[10px] font-mono">
-              <div class="flex justify-between"><span>Project RPM</span><span id="rpm-val-alpha">0 / 15</span></div>
+              <div class="flex justify-between"><span>Shared Project RPM</span><span id="rpm-val-alpha">0 / 15</span></div>
               <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div id="rpm-bar-alpha" class="h-full bg-white" style="width:0%"></div></div>
               <div class="flex justify-between"><span>Daily RPD</span><span id="rpd-val-alpha">0 / 1000</span></div>
               <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div id="rpd-bar-alpha" class="h-full bg-zinc-400" style="width:0%"></div></div>
             </div>
           </div>
 
-          <div id="node-card-beta" class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08]">
+          <div id="node-card-beta" class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10">
             <div class="flex items-center justify-between mb-1.5">
               <div class="flex items-center gap-1.5">
-                <span id="dot-beta" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span class="font-mono text-xs font-semibold text-white">Key #3 · Reviewer</span>
+                <span id="dot-beta" class="w-2 h-2 rounded-full bg-white"></span>
+                <span class="font-mono text-xs font-semibold text-white">API Role 3 · Reviewer</span>
               </div>
               <span id="status-beta" class="font-mono text-[10px] text-zinc-300">HEALTHY</span>
             </div>
-            <div class="text-[11px] text-zinc-400 mb-2">Slot: <code id="fp-beta" class="text-zinc-300 font-mono">ROTATION_KEY_03 · ACTIVE</code></div>
+            <div class="text-[11px] text-zinc-400 mb-2">Route: <code id="fp-beta" class="text-zinc-300 font-mono">ENV:GEMINI_API_KEY_REVIEWER</code></div>
             <div class="space-y-1.5 text-[10px] font-mono">
-              <div class="flex justify-between"><span>Project RPM</span><span id="rpm-val-beta">0 / 15</span></div>
+              <div class="flex justify-between"><span>Shared Project RPM</span><span id="rpm-val-beta">0 / 15</span></div>
               <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div id="rpm-bar-beta" class="h-full bg-white" style="width:0%"></div></div>
               <div class="flex justify-between"><span>Daily RPD</span><span id="rpd-val-beta">0 / 1000</span></div>
               <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div id="rpd-bar-beta" class="h-full bg-zinc-400" style="width:0%"></div></div>
@@ -405,10 +456,10 @@
           </div>
         </div>
 
-        <!-- Autonomous Pipeline Summary -->
-        <div id="ecc-pipeline-steps" class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08] space-y-2">
+        <!-- Lifecycle State Machine Summary -->
+        <div id="ecc-pipeline-steps" class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10 space-y-2">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <span class="text-xs font-medium text-zinc-300">Lifecycle: INGEST → CLASSIFY → PLAN → EXECUTE → COLLECT → INSPECT → REVIEW → REPAIR → VERIFY → DELIVER</span>
+            <span class="text-xs font-medium text-zinc-200">State Machine: INGEST → CLASSIFY → PLAN → BUILD → COLLECT → REVIEW → REPAIR IF NEEDED → VERIFY → DELIVER</span>
             <div class="flex gap-1">
               <button type="button" data-ctx="dev.md" class="ctx-mode-btn px-2 py-0.5 rounded text-[11px] font-mono bg-white/10 text-white">dev.md</button>
               <button type="button" data-ctx="review.md" class="ctx-mode-btn px-2 py-0.5 rounded text-[11px] font-mono text-zinc-400">review.md</button>
@@ -416,19 +467,19 @@
             </div>
           </div>
           <div class="flex items-center justify-between text-[11px] font-mono text-zinc-400 pt-1">
-            <div>Active Skills (<span id="matched-skills-count">Auto</span>): <span id="matched-skills-list" class="text-zinc-200">grill-me, goal-loop, coding-standards, tdd-workflow, verification-loop</span></div>
-            <span id="bus-state-badge" class="text-zinc-300">IDLE</span>
+            <div>Selected Skills (<span id="matched-skills-count">Dynamic</span>): <span id="matched-skills-list" class="text-zinc-200">ecc-core-methodology, ui-ux-pro-max, obra-superpowers, vercel-web-interface</span></div>
+            <span id="bus-state-badge" class="text-zinc-200">IDLE</span>
           </div>
         </div>
 
-        <!-- ECC Catalog Section -->
+        <!-- MMA Application-Native Skill Registry Section -->
         <div id="view-ecc" class="space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex flex-wrap gap-1.5">
-              <button type="button" data-profile="core" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-300">Core</button>
-              <button type="button" data-profile="developer" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-300">Developer</button>
-              <button type="button" data-profile="security" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-300">Security</button>
-              <button type="button" data-profile="full" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/10 text-white">Full ECC</button>
+              <button type="button" data-profile="core" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-300">Core ECC</button>
+              <button type="button" data-profile="developer" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-300">Frontend &amp; UX</button>
+              <button type="button" data-profile="security" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-300">Security &amp; Audit</button>
+              <button type="button" data-profile="full" class="ecc-profile-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/10 text-white">All Registered Skills</button>
             </div>
             <div class="flex gap-1">
               <button type="button" data-filter="all" class="ecc-cat-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-white/10 text-white">All</button>
@@ -436,33 +487,33 @@
               <button type="button" data-filter="skill" class="ecc-cat-btn px-2.5 py-1 rounded-lg text-xs font-mono text-zinc-400">Skills</button>
             </div>
           </div>
-          <input id="ecc-search-input" type="text" placeholder="Search ECC v2.2.3 skills (.agents/skills/) or roles…" class="w-full rounded-xl bg-[#212121] border border-white/10 px-3 py-2 text-xs text-white font-mono" />
-          <div id="ecc-catalog-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-52 overflow-y-auto"></div>
+          <input id="ecc-search-input" type="text" placeholder="Search MMA skill registry by name, repository, license, or task type…" class="w-full rounded-xl bg-[#1f1f1f] border border-white/15 px-3 py-2 text-xs text-white font-mono" />
+          <div id="ecc-catalog-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto"></div>
         </div>
 
-        <!-- AgentShield Section -->
-        <div id="view-shield" class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08] space-y-2.5">
+        <!-- Trail of Bits & AgentShield Security Scanner -->
+        <div id="view-shield" class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10 space-y-2.5">
           <div class="flex items-center justify-between">
-            <div class="text-xs font-semibold text-white">AgentShield Security Scanner (<span id="shield-big-score" class="text-zinc-200 font-mono">100/100</span> · <span id="shield-grade-badge" class="text-zinc-200 font-mono">PASS</span>)</div>
-            <button id="btn-run-shield" type="button" class="px-3 py-1 rounded-lg bg-white/10 text-white text-xs font-mono">Scan</button>
+            <div class="text-xs font-semibold text-white">Security &amp; Secret Scanner (<span id="shield-big-score" class="text-zinc-200 font-mono">100/100</span> · <span id="shield-grade-badge" class="text-zinc-200 font-mono">PASS</span>)</div>
+            <button id="btn-run-shield" type="button" class="px-3 py-1 rounded-lg bg-white/10 text-white text-xs font-mono">Run Scan</button>
           </div>
-          <textarea id="shield-input" rows="2" class="w-full rounded-xl bg-[#171717] border border-white/10 p-2.5 font-mono text-xs text-zinc-200">// Paste code or config to audit against secret exposure, SQLi/XSS, and archive traversal</textarea>
+          <textarea id="shield-input" rows="2" class="w-full rounded-xl bg-[#141414] border border-white/15 p-2.5 font-mono text-xs text-zinc-200">// Paste code or configuration to audit against secret exposure, XSS/SQLi, and ZIP path traversal</textarea>
           <div id="shield-results" class="space-y-1.5"></div>
         </div>
 
-        <!-- Instincts & Telemetry Log -->
+        <!-- Telemetry & Continuous Learning -->
         <div id="view-instincts" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08] space-y-2">
+          <div class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10 space-y-2">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-semibold text-white">Continuous Learning Instincts</span>
-              <button id="btn-evolve-instincts" type="button" class="px-2 py-0.5 rounded bg-white/10 text-zinc-200 text-[11px] font-mono">Evolve</button>
+              <span class="text-xs font-semibold text-white">Active Engineering Guardrails</span>
+              <button id="btn-evolve-instincts" type="button" class="px-2 py-0.5 rounded bg-white/10 text-zinc-200 text-[11px] font-mono">Refresh</button>
             </div>
             <div id="instincts-list" class="space-y-1.5"></div>
           </div>
-          <div class="p-3.5 rounded-xl bg-[#212121] border border-white/[0.08] space-y-2">
-            <span class="text-xs font-semibold text-white">Live Execution Log</span>
+          <div class="p-3.5 rounded-xl bg-[#1f1f1f] border border-white/10 space-y-2">
+            <span class="text-xs font-semibold text-white">Live Operational Telemetry</span>
             <div id="telemetry-log" class="font-mono text-[10px] space-y-1 max-h-36 overflow-y-auto text-zinc-400">
-              <div>[BOOT] Autonomous ECC Master initialized. 3-Key rotation active (15 RPM guard).</div>
+              <div>[BOOT] Multimodal AI (MMA) initialized. 3 API roles routed via /api/gemini (15 RPM ceiling).</div>
             </div>
           </div>
         </div>
