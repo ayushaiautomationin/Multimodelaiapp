@@ -1,0 +1,19 @@
+{
+  "name": "multimodal-ai-mma",
+  "version": "1.0.0",
+  "description": "Multimodal AI (MMA) — A powerful, multimodal, skill-driven AI workbench for creating websites, applications, interactive tools, games, Python utilities, and documents.",
+  "main": "index.html",
+  "scripts": {
+    "test": "node tests/acceptance.test.js"
+  },
+  "keywords": [
+    "multimodal-ai",
+    "mma",
+    "workbench",
+    "ecc",
+    "gemini",
+    "ai-studio"
+  ],
+  "author": "",
+  "license": "MIT"
+}

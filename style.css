@@ -1,44 +1,46 @@
 /* ============================================================================
-   Multimodal AI (MMA) — High-Contrast Monochrome Workspace Stylesheet (style.css)
-   - Light Mode: #ffffff background, #f8f8f8 sidebar, #f3f3f3 composer, #0d0d0d text
-   - Dark Mode:  #0d0d0d background, #141414 sidebar, #1f1f1f composer, #f5f5f5 text
-   - Zero decorative emoji, zero muddy grey gradients, crisp neutral borders.
+   Multimodal AI (MMA) — Modern Minimal Monochrome Design System (style.css)
+   Clean, high-contrast, authentic modern chat workspace:
+   - Dark Mode:  #0d0d0d / #141414 background | #f5f5f5 primary text | #262626 surface
+   - Light Mode: #ffffff background | #0d0d0d primary text | #f5f5f5 surface
    ============================================================================ */
 
 :root {
   --bg-main: #0d0d0d;
   --bg-sidebar: #141414;
   --bg-surface: #1f1f1f;
-  --bg-elevated: #171717;
-  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-elevated: #262626;
+  --bg-hover: rgba(255, 255, 255, 0.08);
   --border-subtle: rgba(255, 255, 255, 0.12);
-  --border-focus: rgba(255, 255, 255, 0.32);
+  --border-strong: rgba(255, 255, 255, 0.24);
   --text-primary: #f5f5f5;
-  --text-secondary: #d4d4d8;
-  --text-muted: #8e8ea0;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
   --accent-btn-bg: #ffffff;
   --accent-btn-fg: #0d0d0d;
+  --code-bg: #050505;
 }
 
 html.light {
   --bg-main: #ffffff;
   --bg-sidebar: #f8f8f8;
-  --bg-surface: #f3f3f3;
+  --bg-surface: #f0f0f0;
   --bg-elevated: #ffffff;
-  --bg-hover: rgba(0, 0, 0, 0.05);
-  --border-subtle: rgba(0, 0, 0, 0.11);
-  --border-focus: rgba(0, 0, 0, 0.35);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --border-subtle: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.28);
   --text-primary: #0d0d0d;
-  --text-secondary: #27272a;
-  --text-muted: #52525b;
+  --text-secondary: #404040;
+  --text-muted: #737373;
   --accent-btn-bg: #0d0d0d;
   --accent-btn-fg: #ffffff;
+  --code-bg: #f5f5f5;
 }
 
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: rgba(142, 142, 160, 0.25) transparent;
+  scrollbar-color: var(--border-subtle) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -51,7 +53,7 @@ html.light {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(142, 142, 160, 0.28);
+  background: var(--border-subtle);
   border-radius: 9999px;
 }
 
@@ -65,29 +67,32 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.glass-bar {
+/* Surfaces */
+.mma-glass-bar {
   background-color: var(--bg-main);
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.studio-sidebar {
+.mma-sidebar {
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-subtle);
 }
 
+/* Minimal Composer Shell */
 .composer-shell {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 1.5rem;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .composer-shell:focus-within {
-  border-color: var(--border-focus);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  border-color: var(--border-strong);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
 }
 
+/* User Message Bubble */
 .user-bubble {
   background-color: var(--bg-surface);
   color: var(--text-primary);
@@ -95,83 +100,62 @@ body {
   border-radius: 1.25rem;
 }
 
+/* Action Cards */
 .preset-card {
-  background-color: var(--bg-elevated);
+  background-color: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: 0.875rem;
+  border-radius: 1rem;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .preset-card:hover {
   background-color: var(--bg-hover);
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
 }
 
+/* Code Blocks */
 pre.code-block {
-  background: #09090b;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--code-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: 0.75rem;
-  padding: 1rem 1.15rem;
+  padding: 1rem;
   overflow-x: auto;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem;
-  line-height: 1.65;
-  color: #f4f4f5;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--text-primary);
   tab-size: 2;
 }
 
+/* Artifact Deliverable Cards */
 .artifact-box {
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 0.875rem;
+  border-radius: 1rem;
   transition: border-color 0.15s ease;
 }
 
 .artifact-box:hover {
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
 }
 
-.thinking-hud {
-  background-color: var(--bg-elevated);
+/* Real Activity Accordion */
+.activity-hud {
+  background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 0.875rem;
+  border-radius: 0.85rem;
 }
 
-.stage-step-pill {
-  transition: all 0.15s ease;
+.pulse-indicator {
+  animation: pulseOp 1.4s ease-in-out infinite;
 }
 
-.stage-step-active {
-  background-color: var(--accent-btn-bg);
-  border-color: var(--accent-btn-bg);
-  color: var(--accent-btn-fg);
-}
-
-.stage-step-done {
-  background-color: transparent;
-  border-color: var(--border-subtle);
-  color: var(--text-secondary);
-}
-
-@keyframes shimmerPulse {
-  0%, 100% { opacity: 0.45; }
+@keyframes pulseOp {
+  0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
 }
 
-.thinking-pulse {
-  animation: shimmerPulse 1.5s ease-in-out infinite;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Light Mode Contrast Overrides */
+/* Light Mode Overrides */
 html.light .text-white,
 html.light .text-zinc-100 {
   color: #0d0d0d !important;
@@ -179,23 +163,35 @@ html.light .text-zinc-100 {
 
 html.light .text-zinc-200,
 html.light .text-zinc-300 {
-  color: #27272a !important;
+  color: #262626 !important;
 }
 
 html.light .text-zinc-400,
 html.light .text-zinc-500 {
-  color: #52525b !important;
+  color: #525252 !important;
 }
 
-html.light .bg-white.text-black {
-  background-color: #0d0d0d !important;
-  color: #ffffff !important;
+html.light .bg-[#141414],
+html.light .bg-[#171717] {
+  background-color: #f8f8f8 !important;
+}
+
+html.light .bg-[#1f1f1f],
+html.light .bg-[#212121],
+html.light .bg-[#2f2f2f] {
+  background-color: #f0f0f0 !important;
+}
+
+html.light .border-white\/10,
+html.light .border-white\/15,
+html.light .border-white\/\[0\.08\] {
+  border-color: rgba(0, 0, 0, 0.12) !important;
 }
 
 html.light #toolbox-drawer,
-html.light #engine-modal > div,
-html.light #attach-popover {
+html.light #settings-modal > div,
+html.light #diagnostics-modal > div {
   background-color: #ffffff !important;
   color: #0d0d0d !important;
-  border-color: rgba(0, 0, 0, 0.14) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
 }
