@@ -81,13 +81,12 @@ async function handler(req, res) {
     }
 
     const modelId = body.modelId || DEFAULT_MODEL;
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
     const upstreamResp = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         systemInstruction: body.systemInstruction,
@@ -137,3 +136,4 @@ module.exports = handler;
 module.exports.redactSecrets = redactSecrets;
 module.exports.getKeyForRole = getKeyForRole;
 module.exports.MODEL_ROTATION_CHAIN = MODEL_ROTATION_CHAIN;
+    
