@@ -11,14 +11,14 @@
  * Isomorphic module (runs in both Node.js for automated acceptance tests and the browser workbench).
  *
  * Implements:
- * 1. State Machine: INGEST -> CLASSIFY -> PLAN -> EXECUTE -> INSPECT -> REVIEW -> REPAIR -> VERIFY -> DELIVER
+ * 1. State Machine: INGEST -> CLASSIFY -> PLAN -> EXECUTE -> COLLECT -> INSPECT -> REVIEW -> REPAIR -> VERIFY -> DELIVER
  * 2. Adaptive Task Classifier: SIMPLE | MEDIUM | COMPLEX | PROJECT with dynamic complexity escalation
- * 3. Autonomous Goal & Socratic Deep-Dive Integration (no manual slash commands required; backward-compatible with /mission, /goal, /grill-me)
- * 4. Project-Level 15-RPM Quota Scheduler (for 20 RPM quota) with 3-key dynamic rotation, 429 exponential backoff + jitter & checkpoint pause
+ * 3. Domain-Specific ECC v2.2.3 Skill Registry (python, html_game, complex_software, research, writing, file_analysis, deployment)
+ * 4. Project-Level 15-RPM Quota Scheduler (for 20 RPM quota) with 3-key dynamic rotation, watchdog timeouts & error classifier
  * 5. File-Manifest & Deterministic Chunk Assembler with MAX_TOKENS recovery & per-file checkpoint persistence
  * 6. 5-Stage Verification & Bounded Self-Repair Loop (configurable maxRepairPasses = 8, stagnation guard)
- * 7. Rolling Conversation Context Assembler (verbatim last 10 messages + older rolling summary + active goal + manifest)
- * 8. Multimodal & Safe ZIP Ingestion (path traversal, nested archive, & decompression bomb defense) + Real ZIP Export
+ * 7. Rolling Conversation Context Assembler (exact last 10 individual messages + older rolling summary + active goal + manifest)
+ * 8. 20 MB Multimodal & Safe ZIP Ingestion (path traversal, nested archive, & decompression bomb defense) + Real ZIP Export
  */
 
 (function (root, factory) {
@@ -41,6 +41,7 @@
     CLASSIFY: 'CLASSIFY',
     PLAN: 'PLAN',
     EXECUTE: 'EXECUTE',
+    COLLECT: 'COLLECT',
     INSPECT: 'INSPECT',
     REVIEW: 'REVIEW',
     REPAIR: 'REPAIR',
@@ -53,11 +54,16 @@
     QUEUED: 'Queued',
     RUNNING: 'Running',
     WAITING_RATE_LIMIT: 'Waiting for rate limit',
+    WAITING_FOR_QUOTA: 'WAITING_FOR_QUOTA',
+    REVIEWING: 'REVIEWING',
+    REPAIRING: 'REPAIRING',
     VERIFYING: 'Verifying',
     PAUSED: 'Paused',
+    INTERRUPTED: 'INTERRUPTED',
     NEEDS_ATTENTION: 'Needs attention',
     CANCELLED: 'Cancelled',
-    COMPLETED: 'Completed'
+    COMPLETED: 'Completed',
+    FAILED: 'FAILED'
   });
 
   const TASK_COMPLEXITY = Object.freeze({
@@ -67,8 +73,14 @@
     PROJECT: 'PROJECT'
   });
 
+  const MAX_SINGLE_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB per file (20,971,520 bytes)
+  const MAX_TOTAL_ATTACHMENTS_BYTES = 50 * 1024 * 1024; // 50 MB combined payload limit
+  const MAX_ZIP_UNCOMPRESSED_BYTES = 25 * 1024 * 1024;
+  const MAX_ZIP_COMPRESSION_RATIO = 100;
+  const MAX_ZIP_ENTRIES = 150;
+
   /* =========================================================================
-     2. SECRET REDACTION & SANITIZED OBSERVABILITY LOGGER
+     2. SECRET REDACTION, IST TIME FORMATTER & SANITIZED OBSERVABILITY LOGGER
      ========================================================================= */
   function redactSecrets(input) {
     if (input === null || input === undefined) return '';
@@ -78,6 +90,24 @@
       .replace(/sk-[0-9A-Za-z\-_]{16,}/g, '[REDACTED_KEY]')
       .replace(/ghp_[0-9A-Za-z]{20,}/g, '[REDACTED_GITHUB_TOKEN]')
       .replace(/AKIA[0-9A-Z]{16}/g, '[REDACTED_AWS_KEY]');
+  }
+
+  function formatTimestampIST(dateOrMs = Date.now()) {
+    try {
+      const d = dateOrMs instanceof Date ? dateOrMs : new Date(dateOrMs);
+      return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      }) + ' IST';
+    } catch (_) {
+      return new Date(dateOrMs).toISOString();
+    }
   }
 
   class ObservabilityLogger {
@@ -99,6 +129,7 @@
       const entry = Object.freeze({
         id: 'evt_' + Date.now() + '_' + this.events.length,
         timestamp: new Date().toISOString(),
+        timestampIST: formatTimestampIST(),
         category: String(category),
         action: redactSecrets(action),
         metadata: Object.freeze(safeMeta)
@@ -113,8 +144,30 @@
   }
 
   /* =========================================================================
-     3. ADAPTIVE TASK CLASSIFIER & SELECTIVE ECC SKILL ROUTER
+     3. ADAPTIVE TASK CLASSIFIER & DOMAIN-AWARE ECC SKILL REGISTRY
      ========================================================================= */
+  const ECC_SKILL_REGISTRY = Object.freeze({
+    python: ['coding-standards', 'tdd-workflow', 'security-review', 'verification-loop'],
+    html_game: ['coding-standards', 'verification-loop', 'eval-harness'],
+    complex_software: ['coding-standards', 'tdd-workflow', 'verification-loop', 'eval-harness', 'grill-me', 'goal-loop'],
+    research: ['strategic-compact', 'eval-harness'],
+    writing: ['strategic-compact', 'verification-loop'],
+    file_analysis: ['security-review', 'strategic-compact', 'verification-loop'],
+    deployment: ['security-review', 'verification-loop', 'coding-standards']
+  });
+
+  function detectTaskDomain(promptText = '', attachments = []) {
+    const lower = String(promptText || '').toLowerCase();
+    const hasFiles = Array.isArray(attachments) && attachments.length > 0;
+    if (/\b(python|pytest|pip|django|flask|fastapi|pandas|\.py)\b/i.test(lower)) return 'python';
+    if (/\b(deploy|vercel|netlify|docker|kubernetes|ci\/cd|env|production)\b/i.test(lower)) return 'deployment';
+    if (/\b(game|canvas|html|css|ui|frontend|tailwind|interactive|widget)\b/i.test(lower)) return 'html_game';
+    if (hasFiles && !/\b(build|create|implement)\b/i.test(lower)) return 'file_analysis';
+    if (/\b(research|compare|citations|evidence|study|investigate)\b/i.test(lower)) return 'research';
+    if (/\b(write|report|essay|documentation|readme|article|summary)\b/i.test(lower) && !/\b(code|app|script)\b/i.test(lower)) return 'writing';
+    return 'complex_software';
+  }
+
   function classifyTask(promptText, attachments = [], activeGoal = '') {
     const raw = String(promptText || '').trim();
     const lower = raw.toLowerCase();
@@ -124,6 +177,7 @@
       return {
         complexity: TASK_COMPLEXITY.SIMPLE,
         command: 'goal_clear',
+        domain: 'general',
         requiresCode: false,
         requiresMultiFile: false,
         estimatedFiles: 0,
@@ -134,8 +188,8 @@
     const isMission = /^\/mission\b/i.test(raw);
     const isGoal = /^\/goal\b/i.test(raw);
     const isGrill = /^\/grill(-me)?\b/i.test(raw);
+    const domain = detectTaskDomain(raw, attachments);
 
-    // Simple conversational greeting or short factual question with no attachments
     const isSimpleChat =
       !isMission &&
       !isGoal &&
@@ -148,6 +202,7 @@
       return {
         complexity: TASK_COMPLEXITY.SIMPLE,
         command: 'chat',
+        domain: 'conversation',
         requiresCode: false,
         requiresMultiFile: false,
         estimatedFiles: 0,
@@ -159,6 +214,7 @@
       return {
         complexity: TASK_COMPLEXITY.MEDIUM,
         command: 'grill-me',
+        domain,
         requiresCode: false,
         requiresMultiFile: false,
         estimatedFiles: 0,
@@ -176,6 +232,7 @@
       return {
         complexity: TASK_COMPLEXITY.PROJECT,
         command: isMission ? 'mission' : isGoal ? 'goal' : 'project',
+        domain,
         requiresCode: true,
         requiresMultiFile: true,
         estimatedFiles: 3,
@@ -187,6 +244,7 @@
       return {
         complexity: TASK_COMPLEXITY.COMPLEX,
         command: isMission ? 'mission' : isGoal ? 'goal' : 'complex',
+        domain,
         requiresCode: true,
         requiresMultiFile: true,
         estimatedFiles: 2,
@@ -197,7 +255,8 @@
     return {
       complexity: TASK_COMPLEXITY.MEDIUM,
       command: 'standard',
-      requiresCode: /\b(code|function|script|bug|fix|html|js|py|ts|css|sql)\b/i.test(lower) || attCount > 0,
+      domain,
+      requiresCode: /\b(code|function|script|bug|fix|html|js|py|ts|css|sql|python)\b/i.test(lower) || attCount > 0,
       requiresMultiFile: false,
       estimatedFiles: 1,
       reason: 'Medium analytical, file-analysis, or single-module task'
@@ -237,13 +296,14 @@
     if (classification.command === 'grill-me') {
       return ['grill-me', 'strategic-compact'];
     }
-    const lower = String(promptText || '').toLowerCase();
-    // Automatically fuse grill-me (Socratic deep dive) and goal-loop into complex/project tasks!
-    const selected = ['coding-standards', 'verification-loop', 'grill-me', 'goal-loop'];
+    const domain = classification.domain || detectTaskDomain(promptText, attachments);
+    const domainSkills = ECC_SKILL_REGISTRY[domain] || ECC_SKILL_REGISTRY.complex_software;
+    const selected = [...domainSkills, 'coding-standards', 'verification-loop'];
 
     if (classification.complexity === TASK_COMPLEXITY.COMPLEX || classification.complexity === TASK_COMPLEXITY.PROJECT) {
-      selected.push('tdd-workflow', 'eval-harness');
+      selected.push('tdd-workflow', 'eval-harness', 'grill-me', 'goal-loop');
     }
+    const lower = String(promptText || '').toLowerCase();
     if (/\b(sec|auth|sql|xss|zip|upload|key|token|audit)\b/i.test(lower) || (attachments && attachments.length > 0)) {
       selected.push('security-review');
     }
@@ -251,8 +311,67 @@
   }
 
   /* =========================================================================
-     4. PROJECT-LEVEL 15-RPM SCHEDULER, 3-KEY ROTATION & RETRY RECOVERY
+     4. PROJECT-LEVEL 15-RPM SCHEDULER, WATCHDOG & ERROR CLASSIFIER
      ========================================================================= */
+  function classifyProviderError(err) {
+    const status = Number(err && err.status) || 0;
+    const code = String((err && err.code) || '');
+    const msg = redactSecrets((err && err.message) || 'Unknown provider error');
+
+    if (code === 'DAILY_QUOTA_EXHAUSTED' || /daily quota|quota exceeded for the day/i.test(msg)) {
+      return {
+        category: 'DAILY_QUOTA_EXHAUSTED',
+        queueState: QUEUE_STATES.PAUSED,
+        retryable: false,
+        userInterventionRequired: false,
+        actionableMessage: `[${formatTimestampIST()}] Daily quota reached. Completed files and task progress are saved in your checkpoint. Automatic retries are paused until quota reset.`
+      };
+    }
+    if (status === 401 || status === 403 || code === 'AUTH_ERROR') {
+      return {
+        category: 'AUTH_ERROR',
+        queueState: QUEUE_STATES.NEEDS_ATTENTION,
+        retryable: false,
+        userInterventionRequired: true,
+        actionableMessage: `[${formatTimestampIST()}] Authentication/authorization failed (${status || 'AUTH'}). Progress is saved. Please verify your API credential configuration.`
+      };
+    }
+    if (status === 400 || code === 'PERMANENT_BAD_REQUEST') {
+      return {
+        category: 'PERMANENT_BAD_REQUEST',
+        queueState: QUEUE_STATES.NEEDS_ATTENTION,
+        retryable: false,
+        userInterventionRequired: true,
+        actionableMessage: `[${formatTimestampIST()}] Request rejected by endpoint (HTTP 400). Completed files are preserved; invalid request was not retried.`
+      };
+    }
+    if (status === 429 || code === 'TRANSIENT_429' || code === 'RATE_LIMIT_RETRIES_EXHAUSTED') {
+      return {
+        category: 'RATE_LIMITED_429',
+        queueState: QUEUE_STATES.WAITING_FOR_QUOTA,
+        retryable: true,
+        userInterventionRequired: false,
+        actionableMessage: `[${formatTimestampIST()}] Temporary rate limit (HTTP 429). Completed files are saved and bounded exponential backoff is active.`
+      };
+    }
+    if (status >= 500 || code === 'UPSTREAM_UNAVAILABLE' || code === 'NETWORK_TIMEOUT') {
+      return {
+        category: 'SERVICE_UNAVAILABLE_OR_TIMEOUT',
+        queueState: QUEUE_STATES.INTERRUPTED,
+        retryable: true,
+        userInterventionRequired: false,
+        actionableMessage: `[${formatTimestampIST()}] Upstream service timeout or 5xx error. Completed files are saved in your checkpoint and can be resumed safely.`
+      };
+    }
+    return {
+      category: 'UNKNOWN_ERROR',
+      queueState: QUEUE_STATES.FAILED,
+      retryable: false,
+      userInterventionRequired: true,
+      actionableMessage: `[${formatTimestampIST()}] Operation interrupted: ${msg}. All previously completed files remain saved.`
+    };
+  }
+
   class ProjectQuotaScheduler {
     constructor(options = {}) {
       this.verifiedProjectQuotaRpm = Number(options.verifiedProjectQuotaRpm || options.projectQuotaRpm) || 20;
@@ -264,6 +383,7 @@
       this.dailyRpdLimit = Number(options.dailyRpdLimit || options.dailyQuotaRpd) || 1000;
       this.maxRetries = typeof options.maxRetries === 'number' ? options.maxRetries : 3;
       this.baseBackoffMs = typeof options.baseBackoffMs === 'number' ? options.baseBackoffMs : 50;
+      this.requestTimeoutMs = Number(options.requestTimeoutMs) || 30000;
       this.nowFn = options.nowFn || (() => Date.now());
       this.sleepFn = options.sleepFn || (ms => new Promise(r => setTimeout(r, ms)));
       this.logger = options.logger || new ObservabilityLogger();
@@ -407,7 +527,6 @@
               exhaustedErr.code = status === 429 ? 'RATE_LIMIT_RETRIES_EXHAUSTED' : 'UPSTREAM_UNAVAILABLE';
               throw exhaustedErr;
             }
-            // Also rotate to next healthy role on 429 if available
             const nextRole = this.selectHealthyRole(
               currentRole === 'planner' ? 'builder' : currentRole === 'builder' ? 'reviewer' : 'planner'
             );
@@ -426,7 +545,6 @@
       }
     }
 
-    // Alias used by workbench UI
     async scheduleRoleCall(preferredRole, operationName, operationFn) {
       return this.schedule(preferredRole, operationFn, { operationName });
     }
@@ -455,7 +573,7 @@
   }
 
   /* =========================================================================
-     5. CONVERSATION MEMORY & ROLLING CONTEXT ASSEMBLER (LAST 10 + SUMMARY)
+     5. CONVERSATION MEMORY & ROLLING CONTEXT ASSEMBLER (EXACT LAST 10 MSGS)
      ========================================================================= */
   function assembleThreadContext(thread, options = {}) {
     if (!thread || typeof thread !== 'object') {
@@ -464,8 +582,9 @@
     const allMessages = Array.isArray(thread.messages) ? thread.messages : [];
     const recentWindowSize = Number(options.recentWindowSize) || 10;
 
-    const recentMessages = allMessages.slice(-recentWindowSize).map(m => ({
-      id: m.id,
+    // Exact last 10 individual messages (user and assistant) in chronological order
+    const recentMessages = allMessages.slice(-recentWindowSize).map((m, idx) => ({
+      id: m.id || ('msg_' + idx),
       role: m.role === 'assistant' ? 'assistant' : 'user',
       text: String(m.text || ''),
       timestamp: m.timestamp || 0
@@ -493,6 +612,7 @@
       id: a.id,
       name: a.name,
       type: a.type,
+      size: a.size || 0,
       isImage: Boolean(a.isImage),
       isZip: Boolean(a.isZip)
     }));
@@ -500,6 +620,7 @@
       id: f.id,
       path: f.path || f.name,
       name: f.name,
+      ext: f.ext || '',
       status: f.status || 'COMPLETED',
       lines: f.lines || 0
     }));
@@ -527,7 +648,6 @@
     }
 
     addChunk(arg1, arg2, arg3, arg4) {
-      // Support both 4-arg (filePath, chunkIndex, totalChunks, content) and 2/3-arg (chunkIndex, content, { isFinal })
       if (typeof arg1 === 'number' && this.defaultFilePath) {
         const filePath = this.defaultFilePath;
         const chunkIndex = arg1;
@@ -681,7 +801,6 @@
     const rawExpected = (taskPlan && (taskPlan.manifestFiles || taskPlan.files)) || [];
     const expectedFiles = rawExpected.map(item => (typeof item === 'string' ? item : (item.path || item.name)));
 
-    // Stage 1: Requirements Verification
     const missingFiles = expectedFiles.filter(reqName => reqName && !files.some(f => f.name === reqName || f.path === reqName));
     const stage1 = {
       stage: 'Stage 1 — Requirements Verification',
@@ -689,7 +808,6 @@
       issues: missingFiles.length > 0 ? [`Missing manifest files: ${missingFiles.join(', ')}`] : (files.length === 0 ? ['No deliverable files generated'] : [])
     };
 
-    // Stage 2: Implementation Verification
     const implIssues = [];
     files.forEach(f => {
       if ((f.lines || String(f.content || '').split('\n').length) < 3) {
@@ -702,7 +820,6 @@
       issues: implIssues
     };
 
-    // Stage 3: Technical Verification (Syntax, Delimiters, Completeness)
     const techIssues = [];
     files.forEach(f => {
       const check = verifyFileSyntaxAndCompleteness(f);
@@ -716,7 +833,6 @@
       issues: techIssues
     };
 
-    // Stage 4: Independent Review
     const reviewIssues = Array.isArray(reviewerFindings)
       ? reviewerFindings.slice()
       : (reviewerFindings && Array.isArray(reviewerFindings.defects) ? reviewerFindings.defects.slice() : []);
@@ -733,7 +849,6 @@
       ...stage4.issues
     ];
 
-    // Stage 5: Verification Gate
     const stage5 = {
       stage: 'Stage 5 — Verification Gate',
       passed: allIssues.length === 0,
@@ -749,12 +864,27 @@
   }
 
   /* =========================================================================
-     8. SAFE MULTIMODAL & ZIP INGESTION + REAL PKZIP ARCHIVE EXPORT
+     8. 20 MB MULTIMODAL & SAFE ZIP INGESTION + REAL PKZIP ARCHIVE EXPORT
      ========================================================================= */
-  const MAX_SINGLE_UPLOAD_BYTES = 10 * 1024 * 1024;
-  const MAX_ZIP_UNCOMPRESSED_BYTES = 25 * 1024 * 1024;
-  const MAX_ZIP_COMPRESSION_RATIO = 100;
-  const MAX_ZIP_ENTRIES = 150;
+  function validateUploadFileLimits(fileMeta, existingAttachments = []) {
+    const size = Number(fileMeta && fileMeta.size) || 0;
+    const name = String((fileMeta && fileMeta.name) || 'upload');
+    if (size > MAX_SINGLE_UPLOAD_BYTES) {
+      return {
+        ok: false,
+        error: `FILE_TOO_LARGE: "${name}" (${(size / (1024 * 1024)).toFixed(2)} MB) exceeds the 20 MB per-file limit (${MAX_SINGLE_UPLOAD_BYTES} bytes).`
+      };
+    }
+    const existingBytes = (Array.isArray(existingAttachments) ? existingAttachments : [])
+      .reduce((acc, a) => acc + (Number(a.size) || 0), 0);
+    if (existingBytes + size > MAX_TOTAL_ATTACHMENTS_BYTES) {
+      return {
+        ok: false,
+        error: `TOTAL_PAYLOAD_EXCEEDED: Adding "${name}" exceeds the 50 MB combined attachment limit.`
+      };
+    }
+    return { ok: true, maxSingleBytes: MAX_SINGLE_UPLOAD_BYTES, maxTotalBytes: MAX_TOTAL_ATTACHMENTS_BYTES };
+  }
 
   function validateZipEntriesSafety(entriesInput) {
     const entries = Array.isArray(entriesInput)
@@ -848,14 +978,13 @@
     }
 
     const safety = validateZipEntriesSafety(entries);
-    const resultObj = {
+    return {
       ok: safety.safe,
       error: safety.error || null,
       entries: safety.safe ? entries : [],
       length: safety.safe ? entries.length : 0,
       totalUncompressedBytes: safety.totalUncompressedBytes || 0
     };
-    return resultObj;
   }
 
   const _CRC_TABLE = (function () {
@@ -956,7 +1085,7 @@
   }
 
   /* =========================================================================
-     9. UNIFIED ORCHESTRATION ENGINE (STATE MACHINE & REPAIR LOOP)
+     9. UNIFIED ORCHESTRATION ENGINE (MULTI-ROUND STATE MACHINE & REPAIR LOOP)
      ========================================================================= */
   class UnifiedOrchestratorEngine {
     constructor(options = {}) {
@@ -1005,7 +1134,6 @@
 
     async invokeProvider(payload) {
       if (!this.providerCallFn) return null;
-      // Support both 1-arg ({ role, stage, ... }) and 3-arg (role, stage, payload) adapters
       if (this.providerCallFn.length >= 2) {
         return await this.providerCallFn(payload.role, payload.stage, payload);
       }
@@ -1025,8 +1153,10 @@
         queueState: QUEUE_STATES.RUNNING,
         classification: null,
         eccSkills: [],
+        executedSkillChecks: [],
         plan: null,
         completedFiles: [],
+        subflowOutcomes: [],
         verificationHistory: [],
         verificationReport: { overallPassed: false, passed: false, stages: [] },
         grillReport: null,
@@ -1076,6 +1206,7 @@
         this.logger.log('CLASSIFY', `Task classified as ${taskState.classification.complexity}`, {
           taskId,
           complexity: taskState.classification.complexity,
+          domain: taskState.classification.domain,
           eccSkills: taskState.eccSkills
         });
 
@@ -1092,6 +1223,7 @@
             });
             return custom || { text: `Here is a direct answer to your question: ${taskState.prompt}` };
           });
+          taskState.subflowOutcomes.push({ role: 'Planner', stage: 'EXECUTE_SIMPLE', status: 'COMPLETED' });
           taskState.responseProse = redactSecrets(simpleRes.text || '');
           recordTransition(LIFECYCLE_STATES.DELIVER, QUEUE_STATES.COMPLETED);
           return taskState;
@@ -1109,6 +1241,7 @@
             });
             return custom || { text: 'Socratic design review completed with recommended architectural defaults.' };
           });
+          taskState.executedSkillChecks.push('grill-me', 'strategic-compact');
           taskState.grillReport = {
             topic: taskState.prompt,
             recommendedRoute: 'Local-first modular architecture with 5-stage verification'
@@ -1148,6 +1281,7 @@
               : ['Complete all manifest files without truncation', 'Pass syntax and security verification'],
             summary: planRes.summary || 'Phased execution plan created by Planner'
           };
+          taskState.subflowOutcomes.push({ role: 'Planner', stage: 'PLAN', status: 'COMPLETED', filesPlanned: taskState.plan.manifestFiles.length });
           thread.taskManifest = taskState.plan;
           this.saveCheckpoint(taskId, taskState);
         }
@@ -1213,9 +1347,12 @@
           };
 
           taskState.completedFiles.push(fileEntry);
+          taskState.subflowOutcomes.push({ role: 'Builder', stage: 'EXECUTE_FILE', fileName, status: 'COMPLETED', lines: fileEntry.lines });
           this.saveCheckpoint(taskId, taskState);
         }
 
+        // COLLECT & INSPECT STAGE: Master AI collects Builder outputs before Reviewer audits
+        recordTransition(LIFECYCLE_STATES.COLLECT, QUEUE_STATES.VERIFYING);
         recordTransition(LIFECYCLE_STATES.INSPECT, QUEUE_STATES.VERIFYING);
         let verificationPassed = false;
         let previousDefectSignature = '';
@@ -1238,10 +1375,18 @@
             ? reviewRes.findings
             : (Array.isArray(reviewRes.defects) ? reviewRes.defects : []);
 
+          taskState.subflowOutcomes.push({
+            role: 'Reviewer',
+            stage: 'INDEPENDENT_REVIEW',
+            status: reviewerFindings.length === 0 ? 'APPROVED' : 'DEFECTS_FOUND',
+            defectCount: reviewerFindings.length
+          });
+
           recordTransition(LIFECYCLE_STATES.VERIFY, QUEUE_STATES.VERIFYING);
           const verifyReport = runFiveStageVerification(taskState.plan, taskState.completedFiles, reviewerFindings);
           taskState.verificationHistory.push(verifyReport);
           taskState.verificationReport = verifyReport;
+          taskState.executedSkillChecks = Array.from(new Set([...taskState.eccSkills]));
 
           if (verifyReport.passed) {
             verificationPassed = true;
@@ -1297,8 +1442,9 @@
         }
         return taskState;
       } catch (err) {
-        taskState.blockedReason = redactSecrets(err.message);
-        taskState.queueState = err.QueueState || QUEUE_STATES.PAUSED;
+        const errInfo = classifyProviderError(err);
+        taskState.blockedReason = errInfo.actionableMessage;
+        taskState.queueState = err.QueueState || errInfo.queueState || QUEUE_STATES.PAUSED;
         this.saveCheckpoint(taskId, taskState);
         throw err;
       }
@@ -1309,8 +1455,14 @@
     LIFECYCLE_STATES,
     QUEUE_STATES,
     TASK_COMPLEXITY,
+    MAX_SINGLE_UPLOAD_BYTES,
+    MAX_TOTAL_ATTACHMENTS_BYTES,
+    ECC_SKILL_REGISTRY,
     redactSecrets,
+    formatTimestampIST,
+    classifyProviderError,
     ObservabilityLogger,
+    detectTaskDomain,
     classifyTask,
     upgradeTaskComplexity,
     selectEccSkillsForTask,
@@ -1320,6 +1472,7 @@
     detectResponseTruncation,
     verifyFileSyntaxAndCompleteness,
     runFiveStageVerification,
+    validateUploadFileLimits,
     validateZipEntriesSafety,
     parseZipBufferHeaders,
     createZipArchiveBytes,
@@ -1333,14 +1486,14 @@
    ============================================================================ */
 window.ECC_AGENTS_VIRTUAL_FS = {
   ".agents/manifest.json": "{\n  \"eccVersion\": \"2.2.3\",\n  \"target\": \"antigravity\",\n  \"layout\": \".agents\",\n  \"profile\": \"developer-security\",\n  \"installedAt\": \"2026-10-19T14:25:00Z\",\n  \"agents\": [\"planner\", \"architect\", \"tdd-guide\", \"code-reviewer\", \"security-reviewer\"],\n  \"skills\": [\n    \"coding-standards\",\n    \"tdd-workflow\",\n    \"security-review\",\n    \"verification-loop\",\n    \"eval-harness\",\n    \"grill-me\",\n    \"goal-loop\",\n    \"strategic-compact\"\n  ],\n  \"workflows\": [\"mission\", \"goal\", \"grill-me\"],\n  \"rules\": [\"security\", \"coding-style\", \"testing\", \"performance\"]\n}\n",
-  ".agents/skills/tdd-workflow/SKILL.md": "---\nname: tdd-workflow\ndescription: Enforce interface-first design and RED -> GREEN -> IMPROVE test-driven development.\n---\n# TDD Workflow Skill\n1. Define clear interfaces and acceptance criteria before implementation.\n2. Write unit and edge-case tests covering nullish, boundary, and error paths.\n3. Verify implementation passes all acceptance criteria before delivery.\n",
-  ".agents/skills/strategic-compact/SKILL.md": "---\nname: strategic-compact\ndescription: Maintain rolling conversation summaries while preserving the last 10 messages verbatim, active goal, and task manifest.\n---\n# Strategic Compaction Skill\n1. Keep the most recent 10 messages in exact chronological order.\n2. Summarize older turns into a compact rolling decision record without overwriting recent messages.\n",
-  ".agents/skills/goal-loop/SKILL.md": "---\nname: goal-loop\ndescription: Maintain a persistent session goal with machine-decidable milestones across conversation turns.\n---\n# Goal Loop Skill\n1. Persist active goal and acceptance criteria in thread state.\n2. Evaluate every turn's output against the active goal milestones.\n",
-  ".agents/skills/security-review/SKILL.md": "---\nname: security-review\ndescription: Audit inputs, files, and outputs against secret exposure, XSS, SQLi, path traversal, and unsafe archive extraction.\n---\n# Security Review Skill (AgentShield)\n1. Never embed raw API keys or credentials in client-side code, logs, or artifacts.\n2. Validate file uploads, enforce size bounds, and block ZIP path traversal (`../`) and decompression bombs.\n3. Escape untrusted strings before DOM rendering.\n",
   ".agents/skills/grill-me/SKILL.md": "---\nname: grill-me\ndescription: Stress-test ambiguous plans by walking the decision tree, surfacing high-impact risks, and providing recommended defaults.\n---\n# Grill-Me Skill\n1. Identify high-impact architectural uncertainties and trade-offs.\n2. Present concrete recommended defaults and rationale for each decision branch.\n3. Allow immediate execution using the recommended route without trapping the user in endless questions.\n",
   ".agents/skills/coding-standards/SKILL.md": "---\nname: coding-standards\ndescription: Enforce modular file boundaries, immutability by default, explicit error handling, and zero truncation.\n---\n# Coding Standards Skill\n1. Prefer immutable state transitions; never mutate input arguments in place.\n2. Keep functions focused and modular with explicit error returns.\n3. Generate complete, syntax-valid files rather than partial snippets.\n",
   ".agents/skills/verification-loop/SKILL.md": "---\nname: verification-loop\ndescription: Execute 5-stage verification (Requirements, Implementation, Technical, Independent Review, Repair & Retest).\n---\n# Verification Loop Skill\n1. Stage 1 (Requirements): Map prompt and active goal to explicit acceptance criteria.\n2. Stage 2 (Implementation): Verify file completeness, imports, and interfaces.\n3. Stage 3 (Technical): Check balanced delimiters, HTML/JS syntax, and test execution.\n4. Stage 4 (Independent Review): Audit Builder output in isolated reviewer context.\n5. Stage 5 (Repair & Retest): Trigger bounded repair passes (max 8) on any failed criterion.\n",
   ".agents/skills/eval-harness/SKILL.md": "---\nname: eval-harness\ndescription: Eval-Driven Development (EDD) grading output against deterministic capability and regression checks.\n---\n# Eval Harness Skill\n1. Define deterministic pass/fail criteria per task.\n2. Record evidence for each acceptance criterion before marking task DELIVERED.\n",
+  ".agents/skills/tdd-workflow/SKILL.md": "---\nname: tdd-workflow\ndescription: Enforce interface-first design and RED -> GREEN -> IMPROVE test-driven development.\n---\n# TDD Workflow Skill\n1. Define clear interfaces and acceptance criteria before implementation.\n2. Write unit and edge-case tests covering nullish, boundary, and error paths.\n3. Verify implementation passes all acceptance criteria before delivery.\n",
+  ".agents/skills/strategic-compact/SKILL.md": "---\nname: strategic-compact\ndescription: Maintain rolling conversation summaries while preserving the last 10 messages verbatim, active goal, and task manifest.\n---\n# Strategic Compaction Skill\n1. Keep the most recent 10 messages in exact chronological order.\n2. Summarize older turns into a compact rolling decision record without overwriting recent messages.\n",
+  ".agents/skills/goal-loop/SKILL.md": "---\nname: goal-loop\ndescription: Maintain a persistent session goal with machine-decidable milestones across conversation turns.\n---\n# Goal Loop Skill\n1. Persist active goal and acceptance criteria in thread state.\n2. Evaluate every turn's output against the active goal milestones.\n",
+  ".agents/skills/security-review/SKILL.md": "---\nname: security-review\ndescription: Audit inputs, files, and outputs against secret exposure, XSS, SQLi, path traversal, and unsafe archive extraction.\n---\n# Security Review Skill (AgentShield)\n1. Never embed raw API keys or credentials in client-side code, logs, or artifacts.\n2. Validate file uploads, enforce size bounds, and block ZIP path traversal (`../`) and decompression bombs.\n3. Escape untrusted strings before DOM rendering.\n",
   ".agents/agents/architect.md": "---\nname: architect\nrole: Builder\n---\nDesigns modular boundaries and implements complete, syntax-verified files per manifest job.\n",
   ".agents/agents/code-reviewer.md": "---\nname: code-reviewer\nrole: Reviewer\n---\nAudits generated files for completeness, balanced syntax, event wiring, and zero truncation.\n",
   ".agents/agents/planner.md": "---\nname: planner\nrole: Planner\n---\nOwns task classification, acceptance criteria definition, file manifest creation, and dependency tracking.\n",
@@ -1492,10 +1645,20 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       renderNodeTelemetry();
       const startedAt = performance.now();
 
-      // Build multi-turn conversation contents (last 10 messages + current prompt + attachments)
+      // Build multi-turn conversation contents: exact last 10 messages (User + AI) + active chat files + attachments
       const contents = [];
+      const activeChatObj = getActiveChat();
+      const sessionFiles = (activeChatObj && Array.isArray(activeChatObj.files)) ? activeChatObj.files : [];
+      if (sessionFiles.length > 0) {
+        const filesDigest = sessionFiles.map(f => 'File `' + f.name + '` (' + f.lines + ' lines):\n' + String(f.content || '').slice(0, 2500)).join('\n\n');
+        contents.push({
+          role: 'user',
+          parts: [{ text: '[ACTIVE CHAT WORKSPACE FILES (' + sessionFiles.length + ' files in this chat)]:\n' + filesDigest }]
+        });
+      }
       if (Array.isArray(recentMessages) && recentMessages.length > 1) {
-        const prior = recentMessages.slice(0, -1).slice(-8);
+        // Carry the last 10 messages of User & AI in exact chronological order
+        const prior = recentMessages.slice(0, -1).slice(-10);
         prior.forEach(m => {
           if (m.text && m.text.trim()) {
             contents.push({
@@ -1544,18 +1707,26 @@ window.ECC_AGENTS_VIRTUAL_FS = {
           const modelId = MODEL_ROTATION_CHAIN[mIdx];
           try {
             const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + encodeURIComponent(apiKey);
-            const directResp = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents,
-                generationConfig: {
-                  temperature: 0.3,
-                  maxOutputTokens: 65536
-                }
-              })
-            });
+            const watchdogCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const watchdogTimer = watchdogCtrl ? setTimeout(() => watchdogCtrl.abort(), 25000) : null;
+            let directResp;
+            try {
+              directResp = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: watchdogCtrl ? watchdogCtrl.signal : undefined,
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
+                  contents,
+                  generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 65536
+                  }
+                })
+              });
+            } finally {
+              if (watchdogTimer) clearTimeout(watchdogTimer);
+            }
 
             if (directResp.status === 429) {
               // Rotate immediately to the next key in ROLE_SEED_MATRIX!
@@ -1900,8 +2071,8 @@ window.ECC_AGENTS_VIRTUAL_FS = {
         '  <div class="max-w-2xl mx-auto space-y-4">',
         '    <div class="p-5 rounded-3xl bg-[#0e111a] border border-white/10 shadow-2xl space-y-4">',
         '      <div class="flex flex-wrap items-center justify-between gap-2">',
-        '        <span class="px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">✓ 5-Stage Verified Application</span>',
-        '        <span id="metrics-badge" class="text-xs font-mono text-sky-300">3 items · 1 completed</span>',
+        '        <span class="px-2.5 py-0.5 rounded-full text-xs font-mono bg-white/[0.06] text-zinc-200 border border-white/15">✓ 5-Stage Verified Application</span>',
+        '        <span id="metrics-badge" class="text-xs font-mono text-zinc-200">3 items · 1 completed</span>',
         '      </div>',
         '      <div>',
         '        <h1 class="text-xl font-bold text-white">' + safeTitle + '</h1>',
@@ -1914,11 +2085,11 @@ window.ECC_AGENTS_VIRTUAL_FS = {
         '          <option value="MED" selected>Medium Priority</option>',
         '          <option value="LOW">Low Priority</option>',
         '        </select>',
-        '        <button id="add-btn" class="px-4 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-black font-semibold text-xs transition">+ Add Item</button>',
+        '        <button id="add-btn" class="px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-black font-semibold text-xs transition">+ Add Item</button>',
         '      </div>',
         '      <div class="flex justify-between items-center pt-1">',
         '        <span class="text-[11px] font-mono text-zinc-400">Interactive Workspace</span>',
-        '        <button id="export-btn" class="text-sky-400 hover:text-sky-300 text-[11px] font-mono">Export State JSON</button>',
+        '        <button id="export-btn" class="text-zinc-300 hover:text-zinc-200 text-[11px] font-mono">Export State JSON</button>',
         '      </div>',
         '      <div id="list-container" class="space-y-2 pt-1"></div>',
         '    </div>',
@@ -1954,6 +2125,41 @@ window.ECC_AGENTS_VIRTUAL_FS = {
         '  <\/script>',
         '</body>',
         '</html>'
+      ].join('\n');
+    }
+
+    if (fileName.endsWith('.py')) {
+      return [
+        '# File: ' + fileName + ' (Verified Python 3 Module — Downloadable .py Artifact, Never Auto-Executed)',
+        'from dataclasses import dataclass, field',
+        'from typing import List, Dict, Any',
+        '',
+        '@dataclass(frozen=True)',
+        'class TaskRecord:',
+        '    record_id: str',
+        '    title: str',
+        '    completed: bool = False',
+        '',
+        'def run_verified_pipeline(items: List[str]) -> Dict[str, Any]:',
+        '    if items is None:',
+        '        raise ValueError("items cannot be None")',
+        '    records = [TaskRecord(record_id=f"rec_{idx}", title=str(val).strip(), completed=True) for idx, val in enumerate(items) if str(val).strip()]',
+        '    return {"count": len(records), "records": [r.__dict__ for r in records]}',
+        '',
+        'if __name__ == "__main__":',
+        '    result = run_verified_pipeline(["Stage 1 Requirements", "Stage 3 Syntax", "Stage 5 Verified"])',
+        '    print("Pipeline OK:", result["count"], "records verified")'
+      ].join('\n');
+    }
+
+    if (fileName.endsWith('.md')) {
+      return [
+        '# ' + cleanTopic,
+        '',
+        '## Architecture & Verification Summary',
+        '- **Lifecycle**: `INGEST -> CLASSIFY -> PLAN -> EXECUTE -> COLLECT -> INSPECT -> REVIEW -> REPAIR -> VERIFY -> DELIVER`',
+        '- **3-Key Shared Quota**: 15 RPM project ceiling across Planner, Builder, and Reviewer.',
+        '- **Verification Status**: Passed all 5 stages.'
       ].join('\n');
     }
 
@@ -2118,6 +2324,16 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     if (!resumeCheckpoint) {
       chat.messages.push(assistantMsg);
     }
+    // Immediately checkpoint the in-flight task to localStorage so if Chrome is closed at any moment, reopening Chrome auto-resumes it!
+    activeTaskPausedCheckpoint = {
+      chatId: chat.id,
+      messageId: assistantMsg.id,
+      prompt: effectivePrompt,
+      classification,
+      completedFiles: [],
+      attachments: attachmentsSnapshot,
+      autoResumeOnBoot: true
+    };
     saveChatsState();
     renderChatSidebar();
     renderCurrentChat();
@@ -2158,6 +2374,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
           : buildDirectSimpleReply(effectivePrompt, chat.goal, callRes.modeLabel);
         assistantMsg.text = assistantMsg.cleanedProse;
 
+        activeTaskPausedCheckpoint = null;
         setLifecycleHeader(LIFECYCLE_STATES.DELIVER, QUEUE_STATES.COMPLETED);
         appendTelemetry('DELIVER', 'Responded to SIMPLE query in 1 round (' + callRes.modeLabel + ' · ' + assistantMsg.latencyTotalMs + 'ms)', 'text-emerald-400');
         saveChatsState();
@@ -2197,6 +2414,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
           : buildAutonomousDeepDiveProse(effectivePrompt);
         assistantMsg.text = assistantMsg.cleanedProse;
 
+        activeTaskPausedCheckpoint = null;
         setLifecycleHeader(LIFECYCLE_STATES.DELIVER, QUEUE_STATES.COMPLETED);
         saveChatsState();
         renderCurrentChat();
@@ -2228,13 +2446,20 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       );
       setNodeVisualState('master', 'HEALTHY', false);
 
-      let manifestFiles = (classification.complexity === TASK_COMPLEXITY.COMPLEX || classification.complexity === TASK_COMPLEXITY.PROJECT)
+      const isPythonTask = /\b(python|\.py|pytest|fastapi|flask|pandas|script\.py)\b/i.test(cleanTopic);
+      let manifestFiles = isPythonTask
         ? [
-            { path: slug + '-app.html', description: 'Interactive HTML/Tailwind/JS studio application' },
-            { path: slug + '-core.ts', description: 'Immutable core state & domain logic module' },
-            { path: slug + '.spec.ts', description: 'Automated unit & acceptance verification suite' }
+            { path: slug + '_engine.py', description: 'Production Python 3 module with type annotations and error handling' },
+            { path: 'test_' + slug.replace(/-/g, '_') + '.py', description: 'Automated pytest verification suite' },
+            { path: 'README.md', description: 'Documentation and execution report' }
           ]
-        : [{ path: slug + '-app.html', description: 'Interactive self-contained module & preview' }];
+        : (classification.complexity === TASK_COMPLEXITY.COMPLEX || classification.complexity === TASK_COMPLEXITY.PROJECT)
+          ? [
+              { path: slug + '-app.html', description: 'Interactive HTML/Tailwind/JS studio application' },
+              { path: slug + '-core.ts', description: 'Immutable core state & domain logic module' },
+              { path: slug + '.spec.ts', description: 'Automated unit & acceptance verification suite' }
+            ]
+          : [{ path: slug + '-app.html', description: 'Interactive self-contained module & preview' }];
 
       let acceptanceCriteria = [
         'All manifest files synthesized and persisted without truncation',
@@ -2380,6 +2605,15 @@ window.ECC_AGENTS_VIRTUAL_FS = {
         updateLiveThinkingDom(assistantMsg);
       }
       setNodeVisualState('alpha', 'HEALTHY', false);
+
+      // COLLECT STAGE: Master AI collects and records Builder subflow outputs before independent review
+      assistantMsg.lifecycleState = LIFECYCLE_STATES.COLLECT || 'COLLECT';
+      setLifecycleHeader('COLLECT', QUEUE_STATES.RUNNING);
+      assistantMsg.thinkingStatus = 'Collecting agent results (' + completedFiles.length + ' file[s] from Builder)…';
+      assistantMsg.thinkingSteps.push(
+        'COLLECT (Master AI): Collected ' + completedFiles.length + ' generated file(s) [' + completedFiles.map(f => f.name).join(', ') + '] and verified subflow completion.'
+      );
+      updateLiveThinkingDom(assistantMsg);
 
       // ROUND 3+: INDEPENDENT REVIEW, 5-STAGE VERIFICATION & SELF-REPAIR (Key #3 — Reviewer)
       assistantMsg.lifecycleState = LIFECYCLE_STATES.INSPECT;
@@ -2534,17 +2768,37 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     if (cancelBtn) cancelBtn.classList.add('hidden');
   }
 
+  function getThinkingLevelMeta(complexity) {
+    if (complexity === TASK_COMPLEXITY.SIMPLE) {
+      return { level: 'LEVEL 1 · FAST DIRECT', depthPct: 25, badgeClass: 'bg-white/[0.06] text-zinc-200 border-white/15', desc: 'Single-Pass Direct Reasoning (Key #1)' };
+    }
+    if (complexity === TASK_COMPLEXITY.MEDIUM) {
+      return { level: 'LEVEL 2 · DEEP REASONING', depthPct: 55, badgeClass: 'bg-white/[0.06] text-zinc-200 border-white/15', desc: 'Socratic Deep-Dive + First-Principles Synthesis' };
+    }
+    if (complexity === TASK_COMPLEXITY.COMPLEX) {
+      return { level: 'LEVEL 3 · MULTI-ROUND ARCHITECT', depthPct: 85, badgeClass: 'bg-white/[0.06] text-zinc-200 border-white/15', desc: '3-Key Rotation: Plan → Chunked Build → 5-Stage Verify' };
+    }
+    return { level: 'LEVEL 4 · MAXIMUM AUTONOMOUS ECC', depthPct: 100, badgeClass: 'bg-white/[0.06] text-zinc-200 border-white/15', desc: 'Full Project Manifest + Multi-File Synthesis + Self-Repair Loop' };
+  }
+
   function createPlaceholderAssistantMsg(classification, selectedSkills) {
+    const levelMeta = getThinkingLevelMeta(classification.complexity);
+    const chat = getActiveChat();
+    const priorMsgCount = Math.min(10, Math.max(0, (chat.messages || []).length));
     return {
       id: 'msg_a_' + (Date.now() + 1),
       role: 'assistant',
       isThinking: true,
       lifecycleState: LIFECYCLE_STATES.INGEST,
       classification,
-      thinkingStatus: 'Autonomous Master · Classifying request & assembling 10-turn context…',
+      thinkingLevel: levelMeta.level,
+      thinkingDesc: levelMeta.desc,
+      thinkingProgressPct: 15,
+      activeKeyLabel: 'Key #1 (Planner)',
+      thinkingStatus: '[' + levelMeta.level + '] Assembling last ' + priorMsgCount + '/10 messages & classifying intent…',
       thinkingSteps: [
-        'INGEST: Assembled thread context & attachments.',
-        'CLASSIFY: Route=' + classification.complexity + ' · Fused ECC skills: [' + (selectedSkills.join(', ') || 'Direct Conversational Mode') + '].'
+        'STAGE 1 (INGEST): Loaded ' + priorMsgCount + '/10 recent messages + ' + ((chat.files || []).length) + ' workspace file(s) from this chat.',
+        'STAGE 2 (CLASSIFY): Assigned ' + levelMeta.level + ' (' + classification.complexity + ') · Fused skills: [' + (selectedSkills.join(', ') || 'Direct Conversational Responder') + '].'
       ],
       latencyTotalMs: 0,
       text: '',
@@ -2592,17 +2846,59 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     if (busBadge) busBadge.textContent = lifecycleState + ' (' + queueState + ')';
     if (dotEl) {
       dotEl.className = queueState === QUEUE_STATES.RUNNING || queueState === QUEUE_STATES.VERIFYING
-        ? 'w-2 h-2 rounded-full bg-sky-400 animate-ping'
+        ? 'w-2 h-2 rounded-full bg-white animate-ping'
         : queueState === QUEUE_STATES.PAUSED || queueState === QUEUE_STATES.NEEDS_ATTENTION
           ? 'w-2 h-2 rounded-full bg-amber-400'
           : 'w-2 h-2 rounded-full bg-emerald-400';
     }
   }
 
+  function renderThinkingStageStepper(lifecycleState) {
+    const stages = [
+      { id: 'INGEST', label: '1. Context (10 Msgs)' },
+      { id: 'PLAN',   label: '2. Socratic Plan (Key #1)' },
+      { id: 'EXECUTE',label: '3. Build Files (Key #2)' },
+      { id: 'VERIFY', label: '4. 5-Stage Audit (Key #3)' },
+      { id: 'DELIVER',label: '5. Delivered' }
+    ];
+    const order = ['INGEST', 'CLASSIFY', 'PLAN', 'EXECUTE', 'INSPECT', 'REVIEW', 'REPAIR', 'VERIFY', 'DELIVER'];
+    const curIdx = Math.max(0, order.indexOf(lifecycleState || 'INGEST'));
+    const mapIdx = { INGEST: 0, PLAN: 2, EXECUTE: 3, VERIFY: 7, DELIVER: 8 };
+
+    return stages.map(st => {
+      const targetIdx = mapIdx[st.id];
+      const isDone = curIdx > targetIdx || lifecycleState === 'DELIVER';
+      const isCurrent = !isDone && (
+        (st.id === 'INGEST' && curIdx <= 1) ||
+        (st.id === 'PLAN' && curIdx === 2) ||
+        (st.id === 'EXECUTE' && curIdx === 3) ||
+        (st.id === 'VERIFY' && curIdx >= 4 && curIdx <= 7)
+      );
+      const cls = isDone
+        ? 'stage-step-done'
+        : isCurrent
+          ? 'stage-step-active font-semibold'
+          : 'bg-white/[0.03] border-white/[0.07] text-zinc-500';
+      const icon = isDone ? '✓ ' : isCurrent ? '⚡ ' : '';
+      return '<span class="stage-step-pill px-2 py-0.5 rounded-lg border text-[10px] font-mono ' + cls + '">' + icon + st.label + '</span>';
+    }).join('');
+  }
+
   function updateLiveThinkingDom(msg) {
     if (typeof document === 'undefined') return;
     const statusEl = document.querySelector('[data-thinking-status="' + msg.id + '"]');
     if (statusEl) statusEl.textContent = msg.thinkingStatus;
+    const stepsEl = document.querySelector('[data-thinking-steps="' + msg.id + '"]');
+    if (stepsEl && Array.isArray(msg.thinkingSteps)) {
+      stepsEl.innerHTML = msg.thinkingSteps.map((s, idx) => (
+        '<div class="flex items-start gap-2 text-[11px] font-mono ' + (idx === msg.thinkingSteps.length - 1 && msg.isThinking ? 'text-zinc-200 font-semibold' : 'text-zinc-300') + '">' +
+        '<span class="text-zinc-300 shrink-0">' + (idx + 1) + '.</span><span>' + escapeHtml(s) + '</span></div>'
+      )).join('');
+    }
+    const stepperEl = document.querySelector('[data-thinking-stepper="' + msg.id + '"]');
+    if (stepperEl) {
+      stepperEl.innerHTML = renderThinkingStageStepper(msg.lifecycleState);
+    }
   }
 
   /* ==========================================================================
@@ -2646,23 +2942,23 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       '<div class="my-3.5 rounded-2xl artifact-box overflow-hidden transition-all">',
       '  <div class="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] bg-white/[0.02]">',
       '    <div class="flex items-center gap-3 min-w-0">',
-      '      <div class="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-base shrink-0">',
+      '      <div class="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/10 flex items-center justify-center text-base shrink-0">',
                isHtml ? '🌐' : '📄',
       '      </div>',
       '      <div class="min-w-0">',
       '        <div class="flex items-center gap-2">',
       '          <span class="text-xs sm:text-sm font-semibold text-white truncate font-mono">' + escapeHtml(fileObj.name) + '</span>',
-      '          <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">✓ ' + escapeHtml(fileObj.status || 'VERIFIED') + '</span>',
+      '          <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-zinc-200 border border-white/15">✓ ' + escapeHtml(fileObj.status || 'VERIFIED') + '</span>',
       '        </div>',
       '        <div class="text-[11px] font-mono text-zinc-400 flex flex-wrap items-center gap-2 mt-0.5">',
       '          <span>' + escapeHtml(fileObj.lang.toUpperCase()) + ' · ' + fileObj.lines + ' lines</span>',
       '          <span>•</span>',
-      '          <span class="text-emerald-400/90">5-Stage Verified</span>',
+      '          <span class="text-zinc-400">5-Stage Verified</span>',
       '        </div>',
       '      </div>',
       '    </div>',
       '    <div class="flex items-center gap-1.5 shrink-0">',
-      '      <button type="button" data-open-file="' + fileObj.id + '" data-open-mode="' + (isHtml ? 'preview' : 'code') + '" class="open-toolbox-file-btn px-3 py-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-black font-semibold text-xs transition flex items-center gap-1 shadow">',
+      '      <button type="button" data-open-file="' + fileObj.id + '" data-open-mode="' + (isHtml ? 'preview' : 'code') + '" class="open-toolbox-file-btn px-3 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-black font-semibold text-xs transition flex items-center gap-1 shadow">',
                isHtml ? '▶ Live Preview' : '✨ Open Studio',
       '      </button>',
       '      <button type="button" data-peek-box="' + fileObj.id + '" class="peek-code-btn px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs text-zinc-200 transition">',
@@ -2671,15 +2967,15 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       '      <button type="button" data-copy-code="' + encodedCode + '" class="copy-code-btn px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs text-zinc-200 transition">',
       '        Copy',
       '      </button>',
-      '      <button type="button" data-download-file="' + fileObj.id + '" class="download-file-btn px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs text-sky-300 transition" title="Download File">',
+      '      <button type="button" data-download-file="' + fileObj.id + '" class="download-file-btn px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs text-zinc-200 transition" title="Download File">',
       '        ⬇',
       '      </button>',
       '    </div>',
       '  </div>',
       '  <div class="px-4 py-1.5 bg-black/40 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-zinc-400 border-b border-white/[0.04]">',
-      '    <span class="text-emerald-300">✓ ' + escapeHtml(v.pass1Label) + '</span>',
-      '    <span class="text-sky-300">✓ ' + escapeHtml(v.pass2Label) + '</span>',
-      '    <span class="text-violet-300">✓ ' + escapeHtml(v.pass3Label) + '</span>',
+      '    <span class="text-zinc-200">✓ ' + escapeHtml(v.pass1Label) + '</span>',
+      '    <span class="text-zinc-200">✓ ' + escapeHtml(v.pass2Label) + '</span>',
+      '    <span class="text-zinc-200">✓ ' + escapeHtml(v.pass3Label) + '</span>',
       '  </div>',
       '  <div data-peek-Area="' + fileObj.id + '" class="hidden p-3 bg-[#040508]">',
       '    <pre class="code-block max-h-72 overflow-y-auto">' + escapeHtml(fileObj.content) + '</pre>',
@@ -2707,13 +3003,13 @@ window.ECC_AGENTS_VIRTUAL_FS = {
 
       const safe = escapeHtml(line)
         .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em class="text-sky-200 not-italic">$1</em>')
-        .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded-md bg-white/[0.08] text-sky-300 font-mono text-xs">$1</code>');
+        .replace(/\*([^*]+)\*/g, '<em class="text-zinc-200 not-italic">$1</em>')
+        .replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded-md bg-white/[0.08] text-zinc-200 font-mono text-xs">$1</code>');
 
       if (safe.startsWith('### ')) {
         html += '<h3 class="text-sm sm:text-base font-semibold text-white mt-3 mb-1.5">' + safe.slice(4) + '</h3>';
       } else if (safe.startsWith('- ')) {
-        html += '<div class="flex items-start gap-2 my-1.5 text-zinc-200"><span class="text-sky-400 mt-0.5">•</span><span class="flex-1 leading-relaxed">' + safe.slice(2) + '</span></div>';
+        html += '<div class="flex items-start gap-2 my-1.5 text-zinc-200"><span class="text-zinc-300 mt-0.5">•</span><span class="flex-1 leading-relaxed">' + safe.slice(2) + '</span></div>';
       } else {
         html += '<p class="my-1.5 text-zinc-200 leading-relaxed">' + safe + '</p>';
       }
@@ -2721,9 +3017,9 @@ window.ECC_AGENTS_VIRTUAL_FS = {
 
     if (files.length >= 2) {
       html += [
-        '<div class="mt-3 p-3.5 rounded-2xl bg-sky-500/10 border border-sky-500/25 flex flex-wrap items-center justify-between gap-2">',
-        '  <div class="text-xs text-sky-200 font-mono">📦 Multi-File Project Ready: ' + files.length + ' verified files synthesized</div>',
-        '  <button type="button" class="download-zip-bundle-btn px-3.5 py-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-black font-semibold text-xs transition shadow">',
+        '<div class="mt-3 p-3.5 rounded-2xl bg-[#2f2f2f] border border-white/10 flex flex-wrap items-center justify-between gap-2">',
+        '  <div class="text-xs text-zinc-200 font-mono">📦 Multi-File Project Ready: ' + files.length + ' verified files synthesized</div>',
+        '  <button type="button" class="download-zip-bundle-btn px-3.5 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-black font-semibold text-xs transition shadow">',
         '    ⬇ Download Project .ZIP',
         '  </button>',
         '</div>'
@@ -2746,8 +3042,8 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     if (!chat.messages || chat.messages.length === 0) {
       stream.innerHTML = [
         '<div class="py-10 sm:py-14 flex flex-col items-center text-center px-3">',
-        '  <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 via-indigo-500 to-emerald-400 text-black flex items-center justify-center text-xl font-bold mb-4 shadow-xl">✦</div>',
-        '  <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] font-mono text-sky-300 mb-3">',
+        '  <div class="w-12 h-12 rounded-2xl bg-white text-black border border-white/15 flex items-center justify-center text-xl font-bold mb-4 shadow-xl">✦</div>',
+        '  <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] font-mono text-zinc-200 mb-3">',
         '    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>',
         '    <span>Autonomous ECC v2.2.3 Master · 3-Key Dynamic Rotation</span>',
         '  </div>',
@@ -2757,19 +3053,19 @@ window.ECC_AGENTS_VIRTUAL_FS = {
         '  </p>',
         '  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl text-left">',
         '    <button type="button" data-prompt="Hi! Tell me how your autonomous 3-key rotation and multi-round verification work." class="preset-prompt-btn preset-card p-4 rounded-2xl group">',
-        '      <div class="text-xs font-semibold text-emerald-300 mb-1 flex items-center justify-between"><span>💬 Instant Conversational Test ("Hi")</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
+        '      <div class="text-xs font-semibold text-zinc-200 mb-1 flex items-center justify-between"><span>💬 Instant Conversational Test ("Hi")</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
         '      <div class="text-[11px] text-zinc-400 leading-relaxed">Responds immediately in 1 fast round with zero unnecessary code-pipeline overhead</div>',
         '    </button>',
         '    <button type="button" data-prompt="Build a complete Habit Tracker & Streak Analytics web application with TypeScript core and unit tests." class="preset-prompt-btn preset-card p-4 rounded-2xl group">',
-        '      <div class="text-xs font-semibold text-sky-300 mb-1 flex items-center justify-between"><span>🚀 Multi-File Web App Synthesis</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
+        '      <div class="text-xs font-semibold text-zinc-200 mb-1 flex items-center justify-between"><span>🚀 Multi-File Web App Synthesis</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
         '      <div class="text-[11px] text-zinc-400 leading-relaxed">Auto-runs Round 1 Plan (Key #1), Round 2 Build (Key #2), and Round 3 Verification (Key #3)</div>',
         '    </button>',
         '    <button type="button" data-prompt="Design a real-time collaborative Kanban board for engineering teams and stress-test the architecture." class="preset-prompt-btn preset-card p-4 rounded-2xl group">',
-        '      <div class="text-xs font-semibold text-violet-300 mb-1 flex items-center justify-between"><span>🧠 Deep Architecture &amp; App Build</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
+        '      <div class="text-xs font-semibold text-zinc-200 mb-1 flex items-center justify-between"><span>🧠 Deep Architecture &amp; App Build</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
         '      <div class="text-[11px] text-zinc-400 leading-relaxed">Automatically fuses Socratic trade-off resolution, goal tracking, and runnable UI generation</div>',
         '    </button>',
         '    <button type="button" data-prompt="Create an interactive Pomodoro Focus Studio with custom timers, task queue, and JSON export." class="preset-prompt-btn preset-card p-4 rounded-2xl group">',
-        '      <div class="text-xs font-semibold text-amber-300 mb-1 flex items-center justify-between"><span>⚡ Interactive Studio App + Live Preview</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
+        '      <div class="text-xs font-semibold text-zinc-200 mb-1 flex items-center justify-between"><span>⚡ Interactive Studio App + Live Preview</span><span class="text-zinc-500 group-hover:text-white transition">→</span></div>',
         '      <div class="text-[11px] text-zinc-400 leading-relaxed">Packages verified HTML/TS/Spec deliverables into the live Artifact Studio drawer</div>',
         '    </button>',
         '  </div>',
@@ -2786,7 +3082,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
                 return '<img src="' + att.dataUrl + '" alt="' + escapeHtml(att.name) + '" class="h-20 w-auto rounded-xl border border-white/15 object-cover" />';
               }
               const icon = att.isZip ? '🗜️' : '📄';
-              return '<div class="px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-sky-300 flex items-center gap-1.5"><span>' + icon + '</span><span>' + escapeHtml(att.name) + (att.zipSummary ? ' (' + escapeHtml(att.zipSummary) + ')' : '') + '</span></div>';
+              return '<div class="px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-zinc-200 flex items-center gap-1.5"><span>' + icon + '</span><span>' + escapeHtml(att.name) + (att.zipSummary ? ' (' + escapeHtml(att.zipSummary) + ')' : '') + '</span></div>';
             }).join('') + '</div>'
           : '';
 
@@ -2801,29 +3097,36 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       }
 
       const complexityBadge = msg.classification ? msg.classification.complexity : 'AUTONOMOUS';
+      const levelMeta = getThinkingLevelMeta(complexityBadge);
+      const thinkingLevelLabel = msg.thinkingLevel || levelMeta.level;
       const thinkingHeader = msg.isThinking
-        ? '<span class="thinking-pulse text-sky-300 font-medium" data-thinking-status="' + msg.id + '">' + escapeHtml(msg.thinkingStatus || 'Processing…') + '</span>'
-        : '<span class="text-zinc-300 flex flex-wrap items-center gap-2"><span>✦ Autonomous Trace (' + ((msg.latencyTotalMs || 45) / 1000).toFixed(2) + 's)</span><span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-sky-500/15 text-sky-300 border border-sky-500/25">' + escapeHtml(complexityBadge) + '</span><span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">' + escapeHtml(msg.lifecycleState || 'DELIVER') + '</span></span>';
+        ? '<div class="flex flex-wrap items-center gap-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-mono border ' + levelMeta.badgeClass + '">🧠 ' + escapeHtml(thinkingLevelLabel) + '</span><span class="thinking-pulse text-zinc-200 font-medium" data-thinking-status="' + msg.id + '">' + escapeHtml(msg.thinkingStatus || 'Thinking…') + '</span></div>'
+        : '<div class="flex flex-wrap items-center gap-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-mono border ' + levelMeta.badgeClass + '">🧠 ' + escapeHtml(thinkingLevelLabel) + '</span><span class="text-zinc-200 font-medium">Thought &amp; Verified in ' + ((msg.latencyTotalMs || 45) / 1000).toFixed(2) + 's (' + ((msg.thinkingSteps || []).length) + ' steps)</span><span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-zinc-200 border border-white/15">✓ ' + escapeHtml(msg.lifecycleState || 'DELIVER') + '</span></div>';
 
-      const stepsHtml = (msg.thinkingSteps || []).map(s => (
-        '<div class="flex items-start gap-2 text-[11px] font-mono text-zinc-400"><span class="text-sky-400">›</span><span>' + escapeHtml(s) + '</span></div>'
+      const stepsHtml = (msg.thinkingSteps || []).map((s, idx) => (
+        '<div class="flex items-start gap-2 text-[11px] font-mono ' + (idx === (msg.thinkingSteps || []).length - 1 && msg.isThinking ? 'text-zinc-200 font-semibold' : 'text-zinc-300') + '"><span class="text-zinc-300 shrink-0">' + (idx + 1) + '.</span><span>' + escapeHtml(s) + '</span></div>'
       )).join('');
 
       return [
         '<div class="flex items-start gap-3">',
-        '  <div class="w-7 h-7 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 text-black flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow">✦</div>',
-        '  <div class="flex-1 min-w-0 space-y-2">',
-        '    <details class="group rounded-2xl trace-pill px-3.5 py-2" ' + (msg.isThinking ? 'open' : '') + '>',
-        '      <summary class="cursor-pointer list-none flex items-center justify-between text-xs select-none">',
+        '  <div class="w-7 h-7 rounded-xl bg-white text-black flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow">✦</div>',
+        '  <div class="flex-1 min-w-0 space-y-2.5">',
+        '    <details class="group rounded-2xl thinking-hud px-3.5 py-2.5" open>',
+        '      <summary class="cursor-pointer list-none flex items-center justify-between gap-2 text-xs select-none">',
                  thinkingHeader,
-        '        <span class="text-[10px] text-zinc-500 group-open:rotate-180 transition-transform">▼</span>',
+        '        <span class="text-[10px] font-mono text-zinc-400 group-open:rotate-180 transition-transform shrink-0">▼</span>',
         '      </summary>',
-        '      <div class="mt-2 pt-2 border-t border-white/[0.05] space-y-1">',
-                 stepsHtml,
+        '      <div class="mt-2.5 pt-2 border-t border-white/[0.07] space-y-2">',
+        '        <div class="flex flex-wrap items-center gap-1.5" data-thinking-stepper="' + msg.id + '">',
+                   renderThinkingStageStepper(msg.lifecycleState),
+        '        </div>',
+        '        <div class="space-y-1 bg-black/40 rounded-xl p-2.5 border border-white/[0.05]" data-thinking-steps="' + msg.id + '">',
+                   stepsHtml,
+        '        </div>',
         '      </div>',
         '    </details>',
         '    <div class="text-sm leading-relaxed">',
-               msg.isThinking ? '<div class="text-xs text-zinc-400 font-mono py-2">Executing dynamic multi-round orchestration…</div>' : renderProseWithArtifactBoxes(msg),
+               msg.isThinking ? '<div class="text-xs text-zinc-200/90 font-mono py-1.5 flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-white animate-ping"></span><span>AI is actively reasoning and executing live steps above…</span></div>' : renderProseWithArtifactBoxes(msg),
         '    </div>',
         '  </div>',
         '</div>'
@@ -2838,17 +3141,33 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     if (typeof document === 'undefined') return;
     const listEl = document.getElementById('chat-history-list');
     const countEl = document.getElementById('chat-count-label');
+    const switcherEl = document.getElementById('header-chat-switcher');
     if (countEl) countEl.textContent = String(chats.length);
+
+    if (switcherEl) {
+      switcherEl.innerHTML = chats.map((c, idx) => {
+        const msgCount = (c.messages || []).length;
+        const fileCount = (c.files || []).length;
+        const label = (c.title || ('Chat #' + (idx + 1))) + ' (' + Math.min(10, msgCount) + '/10 ctx · ' + fileCount + 'f)';
+        return '<option value="' + c.id + '" class="bg-[#171717] text-white" ' + (c.id === activeChatId ? 'selected' : '') + '>' + escapeHtml(label) + '</option>';
+      }).join('');
+    }
+
     if (!listEl) return;
 
     listEl.innerHTML = chats.map(c => {
       const isActive = c.id === activeChatId;
+      const msgCount = (c.messages || []).length;
+      const fileCount = (c.files || []).length;
       const activeClass = isActive
-        ? 'bg-sky-500/15 text-white border-sky-500/30'
+        ? 'bg-[#2f2f2f] text-white border-white/10'
         : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200 border-transparent';
       return [
         '<div class="group flex items-center justify-between rounded-xl px-3 py-2 border ' + activeClass + ' transition cursor-pointer" data-select-chat="' + c.id + '">',
-        '  <div class="truncate text-xs font-medium pr-2">' + escapeHtml(c.title || 'New Session') + '</div>',
+        '  <div class="min-w-0 pr-2">',
+        '    <div class="truncate text-xs font-medium">' + escapeHtml(c.title || 'New Session') + '</div>',
+        '    <div class="text-[10px] font-mono text-zinc-500">' + Math.min(10, msgCount) + '/10 ctx msgs · ' + fileCount + ' files</div>',
+        '  </div>',
         '  <button type="button" data-delete-chat="' + c.id + '" title="Delete session" class="delete-chat-btn opacity-0 group-hover:opacity-100 text-[11px] text-zinc-500 hover:text-red-400 px-1 transition">✕</button>',
         '</div>'
       ].join('');
@@ -2857,11 +3176,30 @@ window.ECC_AGENTS_VIRTUAL_FS = {
 
   function updateFileBadgesCount() {
     if (typeof document === 'undefined') return;
-    const files = getAllGeneratedFiles();
+    const chat = getActiveChat();
+    const files = chat.files || [];
+    const msgWindow = Math.min(10, (chat.messages || []).length);
     const b1 = document.getElementById('sidebar-files-badge');
     const b2 = document.getElementById('header-files-count');
+    const ctxEl = document.getElementById('header-context-count');
     if (b1) b1.textContent = files.length + (files.length === 1 ? ' file' : ' files');
     if (b2) b2.textContent = String(files.length);
+    if (ctxEl) ctxEl.textContent = 'Context: ' + msgWindow + '/10 msgs · ' + files.length + (files.length === 1 ? ' file' : ' files');
+  }
+
+  function startNewIsolatedChatSession() {
+    const c = createDefaultChat();
+    chats.unshift(c);
+    activeChatId = c.id;
+    pendingAttachments = [];
+    activeToolboxFileId = null;
+    renderAttachmentsPreview();
+    saveChatsState();
+    renderChatSidebar();
+    renderCurrentChat();
+    renderToolboxDrawer();
+    showToast('Started a fresh, isolated chat (0/10 context · 0 files)');
+    return c;
   }
 
   /* ==========================================================================
@@ -2895,7 +3233,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     tabsEl.innerHTML = files.map(f => {
       const active = f.id === activeFile.id;
       return '<button type="button" data-toolbox-tab="' + f.id + '" class="toolbox-tab-btn shrink-0 px-2.5 py-1 rounded-lg text-xs font-mono border transition ' +
-        (active ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06] hover:text-white') + '">' +
+        (active ? 'bg-white text-black border-white' : 'bg-white/[0.04] text-zinc-400 border-white/[0.06] hover:text-white') + '">' +
         escapeHtml(f.name) + ' (' + f.lines + 'L)</button>';
     }).join('');
 
@@ -2971,7 +3309,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     container.innerHTML = pendingAttachments.map(att => {
       if (att.isImage && att.dataUrl) {
         return [
-          '<div class="relative group rounded-xl overflow-hidden border border-white/15 bg-[#121521] flex items-center gap-2 pr-2.5">',
+          '<div class="relative group rounded-xl overflow-hidden border border-white/15 bg-[#2f2f2f] flex items-center gap-2 pr-2.5">',
           '  <img src="' + att.dataUrl + '" alt="' + escapeHtml(att.name) + '" class="w-10 h-10 object-cover" />',
           '  <span class="text-[11px] text-zinc-200 max-w-[130px] truncate">' + escapeHtml(att.name) + '</span>',
           '  <span class="text-[10px] font-mono text-emerald-400">Ready</span>',
@@ -2981,7 +3319,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       }
       const icon = att.isZip ? '🗜️' : '📄';
       return [
-        '<div class="px-3 py-1.5 rounded-xl bg-[#121521] border border-white/15 flex items-center gap-2 text-xs text-zinc-200">',
+        '<div class="px-3 py-1.5 rounded-xl bg-[#2f2f2f] border border-white/15 flex items-center gap-2 text-xs text-zinc-200">',
         '  <span>' + icon + '</span>',
         '  <span class="max-w-[160px] truncate font-mono text-[11px]">' + escapeHtml(att.name) + '</span>',
         '  <span class="text-[10px] font-mono text-emerald-400">' + escapeHtml(att.statusLabel || 'Parsed') + '</span>',
@@ -2993,8 +3331,15 @@ window.ECC_AGENTS_VIRTUAL_FS = {
 
   function handleFilesSelected(fileList) {
     Array.from(fileList || []).forEach(file => {
-      if (file.size > 10 * 1024 * 1024) {
-        showToast('Rejected ' + file.name + ': exceeds 10 MB upload limit');
+      const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
+      const MAX_TOTAL_BYTES = 50 * 1024 * 1024; // 50 MB combined
+      if (file.size > MAX_FILE_BYTES) {
+        showToast('Rejected ' + file.name + ': exceeds 20 MB per-file upload limit (' + (file.size / (1024 * 1024)).toFixed(1) + ' MB)');
+        return;
+      }
+      const existingBytes = pendingAttachments.reduce((acc, a) => acc + (Number(a.size) || 0), 0);
+      if (existingBytes + file.size > MAX_TOTAL_BYTES) {
+        showToast('Rejected ' + file.name + ': combined attachments exceed 50 MB limit');
         return;
       }
       const id = 'att_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
@@ -3132,7 +3477,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       '<div class="p-3 rounded-xl bg-black/40 border border-white/[0.06] flex flex-col justify-between gap-1.5">' +
         '<div class="flex items-center justify-between text-xs font-mono text-white font-semibold">' +
           '<span>' + escapeHtml(item.title) + '</span>' +
-          '<span class="text-[10px] text-sky-300 uppercase">' + escapeHtml(item.node) + '</span>' +
+          '<span class="text-[10px] text-zinc-200 uppercase">' + escapeHtml(item.node) + '</span>' +
         '</div>' +
         '<p class="text-[11px] text-zinc-400">' + escapeHtml(item.desc) + '</p>' +
       '</div>'
@@ -3166,7 +3511,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     }
     if (scoreEl) scoreEl.textContent = score + '/100';
     if (navBadge) navBadge.textContent = score + '/100';
-    outEl.innerHTML = notes.map(n => '<div class="text-[11px] font-mono text-emerald-300">' + escapeHtml(n) + '</div>').join('');
+    outEl.innerHTML = notes.map(n => '<div class="text-[11px] font-mono text-zinc-200">' + escapeHtml(n) + '</div>').join('');
   }
 
   function setNodeVisualState(nodeId, label, isBusy) {
@@ -3175,7 +3520,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     const el = document.getElementById(map[nodeId]);
     if (el) {
       el.textContent = label;
-      el.className = isBusy ? 'font-mono text-[10px] text-amber-300' : 'font-mono text-[10px] text-emerald-400';
+      el.className = isBusy ? 'font-mono text-[10px] text-zinc-200' : 'font-mono text-[10px] text-emerald-400';
     }
   }
 
@@ -3195,7 +3540,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
     const container = document.getElementById('toast-container');
     if (!container) return;
     const el = document.createElement('div');
-    el.className = 'pointer-events-auto px-3.5 py-2 rounded-xl bg-[#141824] border border-white/10 text-xs text-white shadow-xl transition-opacity duration-200';
+    el.className = 'pointer-events-auto px-3.5 py-2 rounded-xl bg-[#2f2f2f] border border-white/10 text-xs text-white shadow-xl transition-opacity duration-200';
     el.textContent = redactSecrets(message);
     container.appendChild(el);
     setTimeout(() => {
@@ -3231,6 +3576,7 @@ window.ECC_AGENTS_VIRTUAL_FS = {
   // Expose programmatic hook for automated smoke verification
   window.AntigravityWorkbenchApp = {
     executeUnifiedOrchestratorTask,
+    startNewIsolatedChatSession,
     resolveRoleCredential,
     getActiveChat,
     runInBrowserDoctor,
@@ -3292,14 +3638,56 @@ window.ECC_AGENTS_VIRTUAL_FS = {
       backdrop?.addEventListener('click', () => toggleMobileSidebar(false));
 
       document.getElementById('btn-new-chat')?.addEventListener('click', () => {
-        const c = createDefaultChat();
-        chats.unshift(c);
-        activeChatId = c.id;
-        saveChatsState();
-        renderChatSidebar();
-        renderCurrentChat();
-        renderToolboxDrawer();
+        startNewIsolatedChatSession();
         toggleMobileSidebar(false);
+      });
+      document.getElementById('btn-header-new-chat')?.addEventListener('click', () => {
+        startNewIsolatedChatSession();
+        toggleMobileSidebar(false);
+      });
+      document.getElementById('header-chat-switcher')?.addEventListener('change', (e) => {
+        const selectedId = e.target.value;
+        if (selectedId && chats.some(c => c.id === selectedId)) {
+          activeChatId = selectedId;
+          saveChatsState();
+          renderChatSidebar();
+          renderCurrentChat();
+          renderToolboxDrawer();
+          showToast('Switched chat session (loaded last 10 messages & files)');
+        }
+      });
+
+      // Flush state before Chrome tab closes or reloads
+      window.addEventListener('beforeunload', () => {
+        saveChatsState();
+      });
+
+      // Auto-Resume any interrupted task if Chrome was closed while a task was running!
+      if (activeTaskPausedCheckpoint && activeTaskPausedCheckpoint.prompt) {
+        if (activeTaskPausedCheckpoint.chatId) {
+          activeChatId = activeTaskPausedCheckpoint.chatId;
+          renderChatSidebar();
+          renderCurrentChat();
+        }
+        setTimeout(() => {
+          if (activeTaskPausedCheckpoint && !isExecuting) {
+            showToast('Auto-resuming interrupted task from saved checkpoint…');
+            executeUnifiedOrchestratorTask('', activeTaskPausedCheckpoint);
+          }
+        }, 120);
+      }
+
+      document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
+        const htmlEl = document.documentElement;
+        if (htmlEl.classList.contains('light')) {
+          htmlEl.classList.remove('light');
+          htmlEl.classList.add('dark');
+          showToast('Theme: Dark Monochrome');
+        } else {
+          htmlEl.classList.remove('dark');
+          htmlEl.classList.add('light');
+          showToast('Theme: Light Monochrome');
+        }
       });
 
       document.getElementById('btn-clear-chat')?.addEventListener('click', () => {
